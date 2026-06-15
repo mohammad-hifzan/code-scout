@@ -10,6 +10,8 @@ require_relative "../lib/route_mapper"
 require_relative "../lib/context_builder"
 require_relative "../lib/file_loader"
 require_relative "../lib/controller_analyzer"
+require_relative "../lib/model_analyzer"
+require_relative "../lib/graph_builder"
 
 project_path = ARGV[2]
 command = ARGV[0]
@@ -55,6 +57,18 @@ when "context-files"
   pp FileLoader
       .new
       .load_context(context)
+when "model"
+  model_path = ARGV[1]
+
+  pp ModelAnalyzer.new.analyze(model_path)
+when "graph"
+  model_name = ARGV[1]
+
+  project_map = ProjectMapper.new(project_path).map
+
+  pp GraphBuilder
+    .new(project_map)
+    .build(model_name)
 else
   puts "Unknown command"
 end
