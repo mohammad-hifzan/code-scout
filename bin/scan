@@ -1,0 +1,32 @@
+#!/usr/bin/env ruby
+
+require_relative "../lib/scanner"
+require "pp"
+
+require_relative "../lib/project_mapper"
+require_relative "../lib/inspector"
+require_relative "../lib/reference_finder"
+project_path = ARGV[2]
+command = ARGV[0]
+
+case command
+when "inspect"
+  resource_name = ARGV[1]
+
+  project_map = ProjectMapper.new(project_path).map
+
+  pp Inspector.new(project_map, project_path).inspect_model(resource_name)
+when "references"
+  constant_name = ARGV[1]
+
+  pp ReferenceFinder.new(project_path).find(constant_name)
+else
+  puts "Unknown command"
+end
+# project_path = ARGV[0]
+
+# abort("Please provide project path") unless project_path
+
+# scanner = Scanner.new(project_path)
+
+# pp scanner.scan
