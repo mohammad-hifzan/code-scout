@@ -7,6 +7,10 @@ require_relative "../lib/project_mapper"
 require_relative "../lib/inspector"
 require_relative "../lib/reference_finder"
 require_relative "../lib/route_mapper"
+require_relative "../lib/context_builder"
+require_relative "../lib/file_loader"
+require_relative "../lib/controller_analyzer"
+
 project_path = ARGV[2]
 command = ARGV[0]
 
@@ -24,6 +28,33 @@ when "references"
 when "routes"
   project_path = ARGV[1]
   pp RouteMapper.new(project_path).map
+when "context"
+  resource_name = ARGV[1]
+
+  project_map =
+    ProjectMapper.new(project_path).map
+
+  pp ContextBuilder
+     .new(project_map, project_path)
+     .build(resource_name)
+when "controller"
+  controller_path = ARGV[1]
+
+  pp ControllerAnalyzer.new.analyze(controller_path)
+when "context-files"
+  resource_name = ARGV[1]
+
+  project_map =
+    ProjectMapper.new(project_path).map
+
+  context =
+    ContextBuilder
+      .new(project_map, project_path)
+      .build(resource_name)
+
+  pp FileLoader
+      .new
+      .load_context(context)
 else
   puts "Unknown command"
 end
