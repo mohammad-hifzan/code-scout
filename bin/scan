@@ -15,6 +15,8 @@ require_relative "../lib/graph_builder"
 require_relative "../lib/impact_analyzer"
 require_relative "../lib/dead_code_finder"
 require_relative "../lib/inheritance_usage_finder"
+require_relative "../lib/view_analyzer"
+
 project_path = ARGV[2]
 command = ARGV[0]
 
@@ -94,6 +96,12 @@ when "inheritance"
   project_map =
     ProjectMapper.new(project_path).map
   pp InheritanceUsageFinder.new(project_path, project_map).used_classes
+when "view"
+  view_path = ARGV[1]
+
+  analyzer = ViewAnalyzer.new
+
+  pp analyzer.analyze(view_path)
 else
   puts "Unknown command"
 end
