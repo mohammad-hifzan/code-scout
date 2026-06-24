@@ -18,6 +18,10 @@ class DeadCodeFinder
     @policy_usage =
       PolicyUsageFinder
       .new(project_map)
+
+    @inheritance_usage =
+      InheritanceUsageFinder
+      .new(project_path, project_map)
   end
 
   def find
@@ -42,7 +46,10 @@ class DeadCodeFinder
 
   def unused_controllers
     used_controllers =
-      @controller_usage.used_controllers
+      @controller_usage.used_controllers +
+      @inheritance_usage.used_classes
+
+    used_controllers.uniq!
 
     @project_map[:controllers].keys.reject do |controller|
       used_controllers.include?(controller)
@@ -51,7 +58,10 @@ class DeadCodeFinder
 
   def unused_policies
     used_policies =
-      @policy_usage.used_policies
+      @policy_usage.used_policies +
+      @inheritance_usage.used_classes
+
+    used_policies.uniq!
 
     policy_files =
       Dir.glob(

@@ -14,7 +14,7 @@ require_relative "../lib/model_analyzer"
 require_relative "../lib/graph_builder"
 require_relative "../lib/impact_analyzer"
 require_relative "../lib/dead_code_finder"
-
+require_relative "../lib/inheritance_usage_finder"
 project_path = ARGV[2]
 command = ARGV[0]
 
@@ -89,6 +89,11 @@ when "deadcode"
   pp DeadCodeFinder
        .new(project_map, project_path)
        .find
+when "inheritance"
+  project_path = ARGV[1]
+  project_map =
+    ProjectMapper.new(project_path).map
+  pp InheritanceUsageFinder.new(project_path, project_map).used_classes
 else
   puts "Unknown command"
 end
