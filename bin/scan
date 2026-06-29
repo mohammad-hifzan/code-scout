@@ -16,6 +16,7 @@ require_relative "../lib/impact_analyzer"
 require_relative "../lib/dead_code_finder"
 require_relative "../lib/inheritance_usage_finder"
 require_relative "../lib/view_analyzer"
+require_relative "../lib/dependency_analyzer"
 
 project_path = ARGV[2]
 command = ARGV[0]
@@ -44,9 +45,14 @@ when "context"
      .new(project_map, project_path)
      .build(resource_name)
 when "controller"
-  controller_path = ARGV[1]
+  controller_name = ARGV[1]
+  project_map =
+    ProjectMapper.new(project_path).map
+  controller = project_map[:controllers][controller_name]
 
-  pp ControllerAnalyzer.new.analyze(controller_path)
+  abort("Unknown controller: #{controller_name}") unless controller
+
+  pp ControllerAnalyzer.new.analyze(controller[:path])
 when "context-files"
   resource_name = ARGV[1]
 
@@ -62,9 +68,14 @@ when "context-files"
       .new
       .load_context(context)
 when "model"
-  model_path = ARGV[1]
+  model_name = ARGV[1]
+  project_map =
+    ProjectMapper.new(project_path).map
+  model = project_map[:models][model_name]
 
-  pp ModelAnalyzer.new.analyze(model_path)
+  abort("Unknown model: #{model_name}") unless model
+
+  pp ModelAnalyzer.new.analyze(model[:path])
 when "graph"
   model_name = ARGV[1]
 
@@ -102,6 +113,16 @@ when "view"
   analyzer = ViewAnalyzer.new
 
   pp analyzer.analyze(view_path)
+when "dependency"
+  project_map =
+    ProjectMapper.new(project_path).map
+  analyzer =
+    DependencyAnalyzer.new(
+      project_map,
+      project_path
+    )
+  model_name = ARGV[1]
+  pp analyzer.analyze(model_name)
 else
   puts "Unknown command"
 end
