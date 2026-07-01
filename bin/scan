@@ -17,6 +17,10 @@ require_relative "../lib/dead_code_finder"
 require_relative "../lib/inheritance_usage_finder"
 require_relative "../lib/view_analyzer"
 require_relative "../lib/dependency_analyzer"
+require_relative "../lib/context_engine"
+require_relative "../lib/context_ranker"
+require_relative "../lib/token_estimator"
+require_relative "../lib/context_pruner"
 
 project_path = ARGV[2]
 command = ARGV[0]
@@ -56,17 +60,16 @@ when "controller"
 when "context-files"
   resource_name = ARGV[1]
 
-  project_map =
-    ProjectMapper.new(project_path).map
+  project_map = ProjectMapper.new(project_path).map
+  index = ProjectIndex.new(project_map, project_path)
 
-  context =
-    ContextBuilder
-      .new(project_map, project_path)
-      .build(resource_name)
+  context = ContextEngine.new(index).build(resource_name)
 
-  pp FileLoader
-      .new
-      .load_context(context)
+  ranked = ContextRanker.new.rank(context)
+  estimated = TokenEstimator.new.estimate(ranked)
+  pruned = ContextPruner.new.prune(estimated, max_tokens: 3000)
+
+  pp FileLoader.new.load_files(pruned[:files])
 when "model"
   model_name = ARGV[1]
   project_map =
@@ -123,6 +126,18 @@ when "dependency"
     )
   model_name = ARGV[1]
   pp analyzer.analyze(model_name)
+when "context-engine"
+  project_map = ProjectMapper.new(project_path).map
+  index = ProjectIndex.new(project_map, project_path)
+
+  pp ContextEngine.new(index).build(ARGV[1])
+when "context-rank"
+  project_map = ProjectMapper.new(project_path).map
+  index = ProjectIndex.new(project_map, project_path)
+
+  engine = ContextEngine.new(index)
+
+  pp engine.build(ARGV[1])[:ranked]
 else
   puts "Unknown command"
 end

@@ -7,26 +7,13 @@ class FileLoader
     end
   end
 
-  def load_context(context)
-    paths = []
+  def load_files(files)
+    contents = load(files.map { |file| file[:path] })
 
-    paths << context[:model]
-
-    paths << context[:primary_controller]
-
-    paths << context[:primary_policy]
-
-    paths.concat(
-      context[:related_models]
-    )
-
-    paths.concat(
-      context[:primary_views]
-    )
-
-    load(
-      paths.compact.uniq
-    )
+    files.map do |file|
+      file.merge(
+        content: contents[file[:path]]
+      )
+    end
   end
-  
 end
