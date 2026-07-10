@@ -6,25 +6,44 @@ class ContextEngine
     @project_index = project_index
   end
 
-  def build(model_name)
-    model = @project_index.model(model_name)
+  def build(entity, rule:)
+    model = @project_index.model(entity)
     return unless model
 
-    context = {
-        target: model_name,
-        primary: [
-        model[:context][:model]
-        ].compact,
-        required: [
-        model[:context][:primary_controller],
-        model[:context][:primary_policy]
-        ].compact,
-        related: model[:context][:related_models],
-        optional: model[:context][:primary_views]
+    context = model[:context]
+
+    result = {
+      target: entity
     }
 
-    context.merge(
-        ranked: ContextRanker.new.rank(context)
+    if rule.include_primary?
+      result[:primary] = [
+        context[:model]
+      ].compact
+    end
+
+    if rule.include_controller?
+      result[:required] ||= []
+      result[:required] << context[:primary_controller]
+    end
+
+    if rule.include_policy?
+      result[:required] ||= []
+      result[:required] << context[:primary_policy]
+    end
+
+    if rule.include_related_models?
+      result[:related] =
+        context[:related_models]
+    end
+
+    if rule.include_views?
+      result[:optional] =
+        context[:primary_views]
+    end
+
+    result.merge(
+      ranked: ContextRanker.new.rank(result)
     )
   end
 
@@ -49,5 +68,15 @@ class ContextEngine
 
   def optional_files(context)
     context[:primary_views]
+  end
+
+  def sections
+    %i[
+      primary
+      controller
+      policy
+      related_models
+      views
+    ]
   end
 end

@@ -4,6 +4,7 @@ require_relative "../lib/scanner"
 require "pp"
 
 require_relative "../lib/project_mapper"
+require_relative "../lib/project_index"
 require_relative "../lib/inspector"
 require_relative "../lib/reference_finder"
 require_relative "../lib/route_mapper"
@@ -22,129 +23,147 @@ require_relative "../lib/context_ranker"
 require_relative "../lib/token_estimator"
 require_relative "../lib/context_pruner"
 
-project_path = ARGV[2]
-command = ARGV[0]
+require_relative "../lib/context_rules/base_rule"
+require_relative "../lib/context_rules/edit_model_rule"
+require_relative "../lib/context_rules/explain_rule"
+require_relative "../lib/context_rules/debug_rule"
+
+command      = ARGV.first
+rule_name    = ARGV[1]
+entity        = ARGV[2]
+project_path = ARGV.last
+
+def build_rule(name)
+  case name
+  when "edit"
+    ContextRules::EditModelRule.new
+  when "explain"
+    ContextRules::ExplainRule.new
+  when "debug"
+    ContextRules::DebugRule.new
+  else
+    abort("Unknown rule: #{name}")
+  end
+end
 
 case command
+
 when "inspect"
-  resource_name = ARGV[1]
-
   project_map = ProjectMapper.new(project_path).map
+  pp Inspector.new(project_map, project_path).inspect_model(entity)
 
-  pp Inspector.new(project_map, project_path).inspect_model(resource_name)
 when "references"
-  constant_name = ARGV[1]
+  pp ReferenceFinder.new(project_path).find(entity)
 
-  pp ReferenceFinder.new(project_path).find(constant_name)
 when "routes"
-  project_path = ARGV[1]
   pp RouteMapper.new(project_path).map
+
 when "context"
-  resource_name = ARGV[1]
+  project_map = ProjectMapper.new(project_path).map
+  pp ContextBuilder.new(project_map, project_path).build(entity)
 
-  project_map =
-    ProjectMapper.new(project_path).map
-
-  pp ContextBuilder
-     .new(project_map, project_path)
-     .build(resource_name)
 when "controller"
-  controller_name = ARGV[1]
-  project_map =
-    ProjectMapper.new(project_path).map
-  controller = project_map[:controllers][controller_name]
+  project_map = ProjectMapper.new(project_path).map
+  controller = project_map[:controllers][entity]
 
-  abort("Unknown controller: #{controller_name}") unless controller
+  abort("Unknown controller: #{entity}") unless controller
 
   pp ControllerAnalyzer.new.analyze(controller[:path])
-when "context-files"
-  resource_name = ARGV[1]
 
-  project_map = ProjectMapper.new(project_path).map
-  index = ProjectIndex.new(project_map, project_path)
-
-  context = ContextEngine.new(index).build(resource_name)
-
-  ranked = ContextRanker.new.rank(context)
-  estimated = TokenEstimator.new.estimate(ranked)
-  pruned = ContextPruner.new.prune(estimated, max_tokens: 3000)
-
-  pp FileLoader.new.load_files(pruned[:files])
 when "model"
-  model_name = ARGV[1]
-  project_map =
-    ProjectMapper.new(project_path).map
-  model = project_map[:models][model_name]
+  project_map = ProjectMapper.new(project_path).map
+  model = project_map[:models][entity]
 
-  abort("Unknown model: #{model_name}") unless model
+  abort("Unknown model: #{entity}") unless model
 
   pp ModelAnalyzer.new.analyze(model[:path])
+
 when "graph"
-  model_name = ARGV[1]
-
   project_map = ProjectMapper.new(project_path).map
+  pp GraphBuilder.new(project_map).build(entity)
 
-  pp GraphBuilder
-    .new(project_map)
-    .build(model_name)
 when "impact"
-  model_name = ARGV[1]
-
   project_map = ProjectMapper.new(project_path).map
-
   analyzer = ImpactAnalyzer.new(project_map, project_path)
 
-  puts "Analyzer: #{analyzer.class}"
-  puts "Model: #{model_name}"
+  pp analyzer.analyze(entity)
 
-  pp analyzer.analyze(model_name)
+when "dependency"
+  project_map = ProjectMapper.new(project_path).map
+
+  analyzer = DependencyAnalyzer.new(
+    project_map,
+    project_path
+  )
+
+  pp analyzer.analyze(entity)
+
 when "deadcode"
-  project_path = ARGV[1]
-  project_map =
-    ProjectMapper.new(project_path).map
+  project_map = ProjectMapper.new(project_path).map
+
   pp DeadCodeFinder
        .new(project_map, project_path)
        .find
+
 when "inheritance"
-  project_path = ARGV[1]
-  project_map =
-    ProjectMapper.new(project_path).map
-  pp InheritanceUsageFinder.new(project_path, project_map).used_classes
+  project_map = ProjectMapper.new(project_path).map
+
+  pp InheritanceUsageFinder
+       .new(project_path, project_map)
+       .used_classes
+
 when "view"
-  view_path = ARGV[1]
+  pp ViewAnalyzer.new.analyze(entity)
 
-  analyzer = ViewAnalyzer.new
-
-  pp analyzer.analyze(view_path)
-when "dependency"
-  project_map =
-    ProjectMapper.new(project_path).map
-  analyzer =
-    DependencyAnalyzer.new(
-      project_map,
-      project_path
-    )
-  model_name = ARGV[1]
-  pp analyzer.analyze(model_name)
 when "context-engine"
+  rule = build_rule(rule_name)
+
   project_map = ProjectMapper.new(project_path).map
   index = ProjectIndex.new(project_map, project_path)
 
-  pp ContextEngine.new(index).build(ARGV[1])
+  pp ContextEngine
+       .new(index)
+       .build(entity, rule: rule)
+
 when "context-rank"
+  rule = build_rule(rule_name)
+
   project_map = ProjectMapper.new(project_path).map
   index = ProjectIndex.new(project_map, project_path)
 
-  engine = ContextEngine.new(index)
+  context = ContextEngine
+              .new(index)
+              .build(entity, rule: rule)
 
-  pp engine.build(ARGV[1])[:ranked]
+  pp context[:ranked]
+
+when "context-files"
+  rule = build_rule(rule_name)
+
+  project_map = ProjectMapper.new(project_path).map
+  index = ProjectIndex.new(project_map, project_path)
+
+  context = ContextEngine
+              .new(index)
+              .build(entity, rule: rule)
+
+  estimated =
+    TokenEstimator
+      .new
+      .estimate(context[:ranked])
+
+  pruned =
+    ContextPruner
+      .new
+      .prune(
+        estimated,
+        max_tokens: 3000
+      )
+
+  pp FileLoader
+       .new
+       .load_files(pruned[:files])
+
 else
   puts "Unknown command"
 end
-# project_path = ARGV[0]
-
-# abort("Please provide project path") unless project_path
-
-# scanner = Scanner.new(project_path)
-
-# pp scanner.scan
