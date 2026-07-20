@@ -1,7 +1,8 @@
 # lib/dependency_analyzer.rb
-require_relative "dependency_resolver"
-require_relative "dependency_walker"
-require_relative "graph_builder"
+require_relative "../dependency_resolver"
+require_relative "../dependency_walker"
+require_relative "../graph/graph_builder"
+
 class DependencyAnalyzer
   def initialize(project_map, project_path)
     @project_map = project_map

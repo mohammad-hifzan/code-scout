@@ -1,11 +1,11 @@
 # lib/project_index.rb
 
-require_relative "model_analyzer"
-require_relative "controller_analyzer"
-require_relative "view_analyzer"
-require_relative "context_builder"
-require_relative "dependency_analyzer"
-require_relative "impact_analyzer"
+require_relative "../analysis/model_analyzer"
+require_relative "../analysis/controller_analyzer"
+require_relative "../analysis/view_analyzer"
+require_relative "../context/context_builder"
+require_relative "../analysis/dependency_analyzer"
+require_relative "../analysis/impact_analyzer"
 
 class ProjectIndex
   def initialize(project_map, project_path)

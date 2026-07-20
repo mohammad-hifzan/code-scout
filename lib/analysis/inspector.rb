@@ -1,6 +1,6 @@
 require_relative "reference_finder"
-require_relative "reference_categorizer"
-require_relative "reference_ranker"
+require_relative "../reference_categorizer"
+require_relative "../reference_ranker"
 
 class Inspector
   def initialize(project_map, project_path)

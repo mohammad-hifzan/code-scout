@@ -1,5 +1,6 @@
 # lib/context_engine.rb
-require_relative "project_index"
+require_relative "../indexing/project_index"
+require_relative "context_ranker"
 
 class ContextEngine
   def initialize(project_index)

@@ -1,9 +1,9 @@
 # lib/prompt_builder.rb
 
-require_relative "prompts/header"
-require_relative "prompts/instructions"
-require_relative "prompts/context_section"
-require_relative "prompts/task"
+require_relative "header"
+require_relative "instructions"
+require_relative "context_section"
+require_relative "task"
 
 class PromptBuilder
   def initialize(files)

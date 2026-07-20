@@ -1,6 +1,6 @@
-require_relative "model_usage_finder"
-require_relative "controller_usage_finder"
-require_relative "policy_usage_finder"
+require_relative "../model_usage_finder"
+require_relative "../controller_usage_finder"
+require_relative "../policy_usage_finder"
 require_relative "reference_finder"
 
 class DeadCodeFinder
