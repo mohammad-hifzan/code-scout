@@ -4,6 +4,7 @@ source "https://rubygems.org"
 
 # gem "rails"
 gem "bundler"
+gem "parser"
 
 gem "rspec", "~> 3.13", group: :test
 gem "activesupport"

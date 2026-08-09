@@ -1,16 +1,27 @@
+require "parser/current"
+require "active_support/core_ext/object/blank"
+
 class ModelAnalyzer
   def analyze(path)
     source = File.read(path)
 
+    return empty_result(path) if source.blank?
+
+    node = Parser::CurrentRuby.parse(source)
+    return empty_result(path) unless node
+
+    visitor = ModelVisitor.new
+    visitor.process(node)
+
     {
       model: model_name(path),
-      associations: extract_associations(source),
-      validations: extract_validations(source),
-      callbacks: extract_callbacks(source),
-      scopes: extract_scopes(source),
-      enums: extract_enums(source),
-      includes: extract_includes(source),
-      extends: extract_extends(source)
+      associations: visitor.associations,
+      validations: visitor.validations,
+      callbacks: visitor.callbacks,
+      scopes: visitor.scopes,
+      enums: visitor.enums,
+      includes: visitor.includes,
+      extends: visitor.extends
     }
   end
 
@@ -20,64 +31,115 @@ class ModelAnalyzer
     File.basename(path, ".rb").camelize
   end
 
-  def extract_associations(source)
+  def empty_result(path)
     {
-      belongs_to: source.scan(/belongs_to\s+:([a-z_]+)/).flatten,
-      has_many: source.scan(/has_many\s+:([a-z_]+)/).flatten,
-      has_one: source.scan(/has_one\s+:([a-z_]+)/).flatten
+      model: model_name(path),
+      associations: {
+        belongs_to: [],
+        has_many: [],
+        has_one: []
+      },
+      validations: [],
+      callbacks: [],
+      scopes: [],
+      enums: [],
+      includes: [],
+      extends: []
     }
   end
 
-  def extract_validations(source)
-    source
-      .scan(/validates\s+(.+)/)
-      .flatten
-      .flat_map do |line|
-        line.scan(/:([a-z_]+)/).flatten
+  class ModelVisitor < Parser::AST::Processor
+    attr_reader :associations,
+                :validations,
+                :callbacks,
+                :scopes,
+                :enums,
+                :includes,
+                :extends
+
+    def initialize
+      @associations = {
+        belongs_to: [],
+        has_many: [],
+        has_one: []
+      }
+
+      @validations = []
+      @callbacks = []
+      @scopes = []
+      @enums = []
+      @includes = []
+      @extends = []
+    end
+
+    def on_send(node)
+      receiver, method_name, *args = *node
+
+      if receiver.nil?
+        case method_name
+        when :belongs_to, :has_many, :has_one
+          add_association(method_name, args)
+
+        when :validates
+          add_validations(args)
+
+        when /^before_/, /^after_/, /^around_/
+          add_callback(args)
+
+        when :scope, :pg_search_scope
+          add_to_list(@scopes, args)
+
+        when :enum
+          add_to_list(@enums, args)
+
+        when :include
+          add_module(@includes, args)
+
+        when :extend
+          add_module(@extends, args)
+        end
       end
-      .reject do |token|
-        %w[
-          presence
-          uniqueness
-          format
-          length
-          numericality
-          inclusion
-          exclusion
-          acceptance
-          confirmation
-        ].include?(token)
+
+      super
+    end
+
+    private
+
+    def add_association(type, args)
+      name = first_symbol(args)
+      @associations[type] << name if name
+    end
+
+    def add_validations(args)
+      args.each do |arg|
+        next unless arg.type == :sym
+
+        @validations << arg.children.first.to_s
       end
-      .uniq
-  end
+    end
 
-  def extract_callbacks(source)
-    source.scan(
-      /before_\w+\s+:([a-z_]+)/i
-    ).flatten.uniq
-  end
+    def add_callback(args)
+      name = first_symbol(args)
+      @callbacks << name if name
+    end
 
-  def extract_scopes(source)
-    source.scan(
-      /(scope|pg_search_scope)\s+:([a-z_]+)/
-    ).map(&:last)
-  end
+    def add_to_list(list, args)
+      name = first_symbol(args)
+      list << name if name
+    end
 
-  def extract_enums(source)
-    source.scan(
-      /enum\s+:([a-z_]+)/
-    ).flatten
-  end
+    def add_module(list, args)
+      return if args.empty?
 
-  def extract_includes(source)
-    source.scan(
-      /^\s*include\s+([A-Z][A-Za-z0-9_:]+)/
-    ).flatten
-  end
+      node = args.first
+      name = node.loc.expression.source
 
-  def extract_extends(source)
-    source.scan(
-      /^\s*extend\s+([A-Z][A-Za-z0-9_:]+)/
-    ).flatten
+      list << name if name
+    end
+
+    def first_symbol(args)
+      arg = args.find { |argument| argument.type == :sym }
+      arg&.children&.first&.to_s
+    end
   end
 end
