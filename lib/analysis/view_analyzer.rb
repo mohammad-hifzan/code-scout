@@ -1,4 +1,4 @@
-# lib/view_analyzer.rb
+# lib/analysis/view_analyzer.rb
 
 class ViewAnalyzer
   def analyze(view_path)
@@ -76,11 +76,18 @@ class ViewAnalyzer
   end
 
   def extract_form_models(content)
-    content
-      .scan(/model:\s*(@\w+)/)
-      .flatten
-      .uniq
-      .sort
+    models = []
+    models.concat(
+      content
+        .scan(/model:\s*(@\w+)/)
+        .flatten
+    )
+    models.concat(
+      content
+        .scan(/form_for\s+(@\w+)/)
+        .flatten
+    )
+    models.uniq.sort
   end
 
   def extract_turbo_frames(content)

@@ -37,7 +37,10 @@ class DeadCodeFinder
 
   def unused_models
     used_models =
-      @model_usage.used_models
+      @model_usage.used_models +
+      @inheritance_usage.used_classes
+
+    used_models.uniq!
 
     @project_map[:models].keys.reject do |model|
       used_models.include?(model)

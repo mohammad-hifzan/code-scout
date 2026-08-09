@@ -15,9 +15,12 @@ class ImpactAnalyzer
     graph =
       GraphBuilder.new(@project_map).build(model_name)
 
+    models_path = File.join(@project_path, 'app', 'models')
     direct_models =
       context[:related_models]
-        .map { |path| File.basename(path, ".rb").camelize }
+        .map do |path|
+          Pathname.new(path).relative_path_from(models_path).to_s.chomp('.rb').camelize
+        end
 
     indirect_models =
       collect_indirect_models(graph)
