@@ -8,29 +8,39 @@ class DependencyWalker
   ].freeze
 
   def walk_models(node)
-    collect_models(node)
+    return [] if node.nil? # Handle nil input
+
+    collected_dependencies = Set.new
+    path_visited = Set.new # Tracks models in the current recursion path to detect cycles
+
+    current_model_name = node[:model]
+    return [] if current_model_name.nil? # Handles nodes like { associations: {} }
+
+    path_visited << current_model_name # Mark root as visited for cycle detection in its branches
+
+    children(node).each do |child|
+      # Pass a copy of path_visited for each branch to isolate their cycle detection
+      _collect_recursive(child, path_visited.dup, collected_dependencies)
+    end
+
+    collected_dependencies.to_a
   end
 
   private
 
-  def collect_models(node, visited = Set.new)
-    model = node[:model]
+  def _collect_recursive(node, path_visited, collected_dependencies)
+    model_name = node[:model]
 
-    return [] unless model
-    return [] if visited.include?(model)
+    return if model_name.nil? # Handle child nodes with nil model or missing model key
+    return if path_visited.include?(model_name) # Detect cycle in current path
 
-    visited << model
-
-    models = []
+    path_visited << model_name # Add to current path for cycle detection
+    collected_dependencies << model_name # Add to the global set of collected unique models
 
     children(node).each do |child|
-      models << child[:model]
-      models.concat(
-        collect_models(child, visited)
-      )
+      # Pass a copy of path_visited to children to ensure cycle detection is isolated per branch
+      _collect_recursive(child, path_visited.dup, collected_dependencies)
     end
-
-    models
   end
 
   def children(node)
