@@ -1,4 +1,5 @@
 # lib/graph_builder.rb
+require "active_support/core_ext/string/inflections"
 
 class GraphBuilder
   def initialize(project_map)
@@ -6,9 +7,7 @@ class GraphBuilder
   end
 
   def build(model_name)
-    visited = []
-
-    traverse(model_name, visited)
+    traverse(model_name, [])
   end
 
   private
@@ -18,25 +17,25 @@ class GraphBuilder
   def traverse(model_name, visited)
     return nil if visited.include?(model_name)
 
-    visited << model_name
-
-    model = project_map[:models][model_name]
+    model = project_map.dig(:models, model_name)
     return nil unless model
+
+    new_visited = visited + [model_name]
 
     {
       model: model_name,
       associations: {
         belongs_to: children_for(
           model[:associations][:belongs_to],
-          visited
+          new_visited
         ),
         has_many: children_for(
           model[:associations][:has_many],
-          visited
+          new_visited
         ),
         has_one: children_for(
           model[:associations][:has_one],
-          visited
+          new_visited
         )
       }
     }
