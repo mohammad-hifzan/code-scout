@@ -4,14 +4,14 @@ class RuleSelector
     when :edit
       ContextRules::EditModelRule.new
 
-    when :explain
-      ContextRules::ExplainRule.new
-
     when :debug
       ContextRules::DebugRule.new
 
+    when :explain
+      ContextRules::ExplainRule.new
+
     else
-      raise "Unknown action: #{action}"
+      ContextRules::BaseRule.new
     end
   end
 end

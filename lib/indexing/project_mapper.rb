@@ -1,4 +1,5 @@
 require "active_support/inflector"
+require "pathname"
 
 class ProjectMapper
   def initialize(project_path)
@@ -28,10 +29,14 @@ class ProjectMapper
   end
 
   def controllers
+    controllers_dir = File.join(project_path, "app/controllers")
     Dir.glob(
-      File.join(project_path, "app/controllers/**/*_controller.rb")
+      File.join(controllers_dir, "**/*_controller.rb")
     ).each_with_object({}) do |path, result|
-      controller_name = File.basename(path, ".rb").camelize
+      relative_path = Pathname.new(path).relative_path_from(Pathname.new(controllers_dir)).to_s
+      class_name_part = relative_path.sub(/_controller\.rb$/, "")
+      controller_name = "#{class_name_part.camelize}Controller"
+
       next if controller_name == "ApplicationController"
 
       result[controller_name] = {
@@ -41,13 +46,12 @@ class ProjectMapper
   end
 
   def models
-    result = {}
-
+    models_dir = File.join(project_path, "app/models")
     Dir.glob(
-      File.join(project_path, "app/models/**/*.rb")
-    ).each do |path|
-
-      model_name = File.basename(path, ".rb").camelize
+      File.join(models_dir, "**/*.rb")
+    ).each_with_object({}) do |path, result|
+      relative_path = Pathname.new(path).relative_path_from(Pathname.new(models_dir)).to_s
+      model_name = relative_path.sub(/\.rb$/, "").camelize
 
       next if model_name == "ApplicationRecord"
 
@@ -56,8 +60,6 @@ class ProjectMapper
         associations: extract_associations(path)
       }
     end
-
-    result
   end
 
   def views
