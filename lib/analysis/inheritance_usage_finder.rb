@@ -12,8 +12,6 @@ class InheritanceUsageFinder
   def used_classes
     ruby_files.flat_map do |file|
       File.read(file).scan(/class\s+\S+\s*<\s*([A-Za-z0-9_:]+)/).flatten
-    end.map do |parent_class|
-      parent_class.split("::").last
     end.uniq.reject do |klass|
       IGNORED_CLASSES.include?(klass)
     end.select do |klass|
