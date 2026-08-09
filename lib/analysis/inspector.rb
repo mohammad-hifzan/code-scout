@@ -9,7 +9,7 @@ class Inspector
   end
 
   def inspect_model(model_name)
-    model = @project_map[:models][model_name]
+    model = @project_map[:models] && @project_map[:models][model_name]
 
     return nil unless model
 
