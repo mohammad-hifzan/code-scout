@@ -131,7 +131,7 @@ RSpec.describe Inspector do
       end
     end
 
-    context 'when a reference is a substring of another word' do
+    context 'when a reference is only a substring of another constant name' do
       let(:project_map) do
         {
           models: {
@@ -146,13 +146,13 @@ RSpec.describe Inspector do
       before do
         create_file('app/models/user.rb', 'class User; end')
         create_file('app/services/abuser_reporter.rb', 'class AbuserReporter; end')
+        create_file('app/models/user_profile.rb', 'class UserProfile; end')
       end
 
-      it 'exposes the weakness of string-based search by finding false positives' do
+      it 'does not treat substrings as references' do
         result = inspector.inspect_model('User')
-        # This is a known bug in ReferenceFinder. This test documents it.
-        # The word 'user' in 'AbuserReporter' will be found.
-        expect(result[:references][:services]).to include(a_string_ending_with('app/services/abuser_reporter.rb'))
+        expect(result[:references][:services]).not_to include(a_string_ending_with('app/services/abuser_reporter.rb'))
+        expect(result[:references][:models]).not_to include(a_string_ending_with('app/models/user_profile.rb'))
       end
     end
 
@@ -180,11 +180,11 @@ RSpec.describe Inspector do
         expect(result[:references][:controllers].first).to end_with('app/controllers/posts_controller.rb')
       end
 
-      it 'ranks each file only once' do
+      it 'ranks each file only once and ignores false positives' do
         result = inspector.inspect_model('Post')
         expect(result[:ranked_references][:primary].count).to eq(2) # model and controller
         expect(result[:ranked_references][:primary]).to include(a_string_ending_with('app/controllers/posts_controller.rb'))
-        expect(result[:ranked_references][:tertiary].count).to eq(1) # job
+        expect(result[:ranked_references][:tertiary]).to be_empty
       end
     end
 
