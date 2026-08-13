@@ -1,4 +1,5 @@
 # lib/model_usage_finder.rb
+require 'active_support/core_ext/string/inflections'
 
 class ModelUsageFinder
   def initialize(project_map)
@@ -13,7 +14,12 @@ class ModelUsageFinder
 
       [:belongs_to, :has_many, :has_one].each do |type|
         associations[type].each do |association|
-          used << association.to_s.singularize.camelize
+          model_name = if association.is_a?(Hash) && association[:class_name]
+            association[:class_name]
+          else
+            association.to_s.singularize.camelize
+          end
+          used << model_name
         end
       end
     end

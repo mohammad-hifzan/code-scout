@@ -7,7 +7,7 @@ class ControllerUsageFinder
     RouteMapper
       .new(@project_path)
       .map
-      .filter_map { |route| route[:controller] }
+      .filter_map { |route| route[:controller] if route.is_a?(Hash) }
       .uniq
   end
 end

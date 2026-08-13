@@ -4,7 +4,10 @@ class PolicyUsageFinder
   end
 
   def used_policies
-    @project_map[:models].keys.map do |model_name|
+    models = @project_map&.[](:models)
+    return [] if models.nil?
+
+    models.keys.map do |model_name|
       "#{model_name}Policy"
     end
   end
