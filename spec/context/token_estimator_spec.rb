@@ -79,6 +79,30 @@ RSpec.describe TokenEstimator do
     file2.unlink
   end
 
+  it "preserves the order of input files in the output array" do
+    file1 = Tempfile.new("ordered_file_1.rb")
+    file1.write("content1")
+    file1.close
+
+    file2 = Tempfile.new("ordered_file_2.rb")
+    file2.write("content2")
+    file2.close
+
+    input_files = [
+      { path: file1.path, identifier: "first_file" },
+      { path: file2.path, identifier: "second_file" }
+    ]
+
+    result = estimator.estimate(input_files)
+
+    expect(result.first[:identifier]).to eq("first_file")
+    expect(result.last[:identifier]).to eq("second_file")
+    expect(result.map { |f| f[:identifier] }).to eq(["first_file", "second_file"])
+
+    file1.unlink
+    file2.unlink
+  end
+
   it "preserves all original item fields" do
     file = Tempfile.new("preserve.rb")
     file.write("content")
