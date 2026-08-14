@@ -1,3 +1,6 @@
+require 'active_support/core_ext/string'
+require 'active_support/core_ext/object/blank'
+
 class ReferenceRanker
   def initialize(model_name)
     @model_name = model_name
@@ -7,6 +10,8 @@ class ReferenceRanker
     primary = []
     secondary = []
     tertiary = []
+
+    return { primary: [], secondary: [], tertiary: [] } if categorized_references.nil?
 
     categorized_references.each_value do |files|
       files.each do |file|
@@ -35,20 +40,19 @@ class ReferenceRanker
   attr_reader :model_name
 
   def score(file)
-    filename = File.basename(file)
+    return generic_score(file) if model_name.blank?
 
-    return 100 if filename == "#{model_name.underscore}.rb"
+    # Regex to handle namespaced paths correctly
+    return 100 if file.match?(/#{Regexp.escape(model_name.underscore)}\.rb$/)
+    return 90 if file.match?(/#{Regexp.escape(model_name.pluralize.underscore)}_controller\.rb$/)
+    return 85 if file.match?(/#{Regexp.escape(model_name.underscore)}_policy\.rb$/)
 
-    return 90 if filename ==
-      "#{model_name.pluralize.underscore}_controller.rb"
+    generic_score(file)
+  end
 
-    return 85 if filename ==
-      "#{model_name.underscore}_policy.rb"
-
+  def generic_score(file)
     return 70 if file.include?("/app/models/")
-
     return 60 if file.include?("/app/controllers/")
-
     return 20 if file.include?("/app/views/")
 
     10
