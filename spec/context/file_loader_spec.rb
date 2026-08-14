@@ -120,5 +120,15 @@ RSpec.describe FileLoader do
     it "returns an empty hash for empty input" do
       expect(loader.load([])).to eq({})
     end
+
+    it "raises Errno::EACCES for an unreadable file" do
+      file = create_tempfile("unreadable")
+      File.chmod(0o000, file.path) # Remove all permissions
+
+      expect { loader.load([file.path]) }.to raise_error(Errno::EACCES)
+
+      File.chmod(0o644, file.path) # Restore permissions for cleanup
+      file.unlink
+    end
   end
 end
