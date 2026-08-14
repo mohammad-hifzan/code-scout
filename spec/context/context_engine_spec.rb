@@ -62,6 +62,124 @@ RSpec.describe ContextEngine do
         )
       end
 
+      it 'passes the built context to the ranker before merging ranked results' do
+        allow(rule).to receive(:include_primary?).and_return(true)
+        # Verify that rank is called with the context *before* the :ranked key is added
+        expect(context_ranker).to receive(:rank).with({
+          target: 'User',
+          primary: ['user.rb']
+        })
+        engine.build(entity, rule: rule)
+      end
+
+      it 'passes a complex built context to the ranker' do
+        allow(rule).to receive(:include_primary?).and_return(true)
+        allow(rule).to receive(:include_controller?).and_return(true)
+        allow(rule).to receive(:include_related_models?).and_return(true)
+
+        expected_payload_for_ranker = {
+          target: 'User',
+          primary: ['user.rb'],
+          required: ['users_controller.rb'],
+          related: ['post.rb', 'account.rb']
+        }
+
+        expect(context_ranker).to receive(:rank).with(expected_payload_for_ranker)
+        engine.build(entity, rule: rule)
+      end
+
+      it 'passes a complete context to ContextRanker before adding :ranked key' do
+        allow(rule).to receive(:include_primary?).and_return(true)
+        allow(rule).to receive(:include_controller?).and_return(true)
+        allow(rule).to receive(:include_policy?).and_return(true)
+        allow(rule).to receive(:include_related_models?).and_return(true)
+        allow(rule).to receive(:include_views?).and_return(true)
+
+        expected_context_for_ranker = {
+          target: 'User',
+          primary: ['user.rb'],
+          required: ['users_controller.rb', 'user_policy.rb'],
+          related: ['post.rb', 'account.rb'],
+          optional: ['users/index.html.erb']
+        }
+        expect(context_ranker).to receive(:rank).with(expected_context_for_ranker)
+
+        engine.build(entity, rule: rule)
+      end
+
+      context 'when individual rules are disabled' do
+        before do
+          # Enable all rules by default for these tests, then disable one by one
+          allow(rule).to receive(:include_primary?).and_return(true)
+          allow(rule).to receive(:include_controller?).and_return(true)
+          allow(rule).to receive(:include_policy?).and_return(true)
+          allow(rule).to receive(:include_related_models?).and_return(true)
+          allow(rule).to receive(:include_views?).and_return(true)
+        end
+
+        it 'does not include :primary if include_primary? is false' do
+          allow(rule).to receive(:include_primary?).and_return(false)
+          result = engine.build(entity, rule: rule)
+          expect(result).not_to have_key(:primary)
+        end
+
+        it 'does not add controller to :required if include_controller? is false' do
+          allow(rule).to receive(:include_controller?).and_return(false)
+          result = engine.build(entity, rule: rule)
+          expect(result[:required]).to contain_exactly('user_policy.rb')
+        end
+
+        it 'does not add policy to :required if include_policy? is false' do
+          allow(rule).to receive(:include_policy?).and_return(false)
+          result = engine.build(entity, rule: rule)
+          expect(result[:required]).to contain_exactly('users_controller.rb')
+        end
+
+        it 'does not create :required key if controller and policy are false' do
+          allow(rule).to receive(:include_controller?).and_return(false)
+          allow(rule).to receive(:include_policy?).and_return(false)
+          result = engine.build(entity, rule: rule)
+          expect(result).not_to have_key(:required)
+        end
+
+        it 'does not include :related if include_related_models? is false' do
+          allow(rule).to receive(:include_related_models?).and_return(false)
+          result = engine.build(entity, rule: rule)
+          expect(result).not_to have_key(:related)
+        end
+
+        it 'does not include :optional if include_views? is false' do
+          allow(rule).to receive(:include_views?).and_return(false)
+          result = engine.build(entity, rule: rule)
+          expect(result).not_to have_key(:optional)
+        end
+      end
+
+      context 'with a mix of enabled and disabled rules' do
+        before do
+          allow(rule).to receive(:include_primary?).and_return(true)
+          allow(rule).to receive(:include_related_models?).and_return(true)
+          # controller, policy, and views are disabled by default
+        end
+
+        it 'only includes keys for enabled rules' do
+          result = engine.build(entity, rule: rule)
+          expect(result.keys).to contain_exactly(
+            :target,
+            :primary,
+            :related,
+            :ranked
+          )
+        end
+      end
+
+      context 'with no rules enabled' do
+        it 'does not add optional keys to the result' do
+          result = engine.build(entity, rule: rule)
+          expect(result.keys).to contain_exactly(:target, :ranked)
+        end
+      end
+
       context 'when rule includes primary' do
         it 'adds the primary model to the result' do
           allow(rule).to receive(:include_primary?).and_return(true)
@@ -101,6 +219,15 @@ RSpec.describe ContextEngine do
           result = engine.build(entity, rule: rule)
           expect(result[:related]).to contain_exactly('post.rb', 'account.rb')
         end
+
+        context 'with an empty array' do
+          let(:model_context) { super().merge(related_models: []) }
+          it 'adds an empty array to the result' do
+            allow(rule).to receive(:include_related_models?).and_return(true)
+            result = engine.build(entity, rule: rule)
+            expect(result[:related]).to be_empty
+          end
+        end
       end
 
       context 'when rule includes views' do
@@ -108,6 +235,15 @@ RSpec.describe ContextEngine do
           allow(rule).to receive(:include_views?).and_return(true)
           result = engine.build(entity, rule: rule)
           expect(result[:optional]).to contain_exactly('users/index.html.erb')
+        end
+
+        context 'with an empty array' do
+          let(:model_context) { super().merge(primary_views: []) }
+          it 'adds an empty array to the result' do
+            allow(rule).to receive(:include_views?).and_return(true)
+            result = engine.build(entity, rule: rule)
+            expect(result[:optional]).to be_empty
+          end
         end
       end
 
