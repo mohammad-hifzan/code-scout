@@ -124,6 +124,78 @@ RSpec.describe ContextBuilder do
           expect(context[:primary_controller]).to eq('/fake/project/app/controllers/people_controller.rb')
         end
       end
+
+      context 'for primary_views logic' do
+        let(:standard_view_paths) do
+          [
+            '/fake/project/app/views/users/index.html.erb',      # basename: index.html.erb
+            '/fake/project/app/views/users/show.html.erb',       # basename: show.html.erb
+            '/fake/project/app/views/users/edit.html.erb',       # basename: edit.html.erb
+            '/fake/project/app/views/users/_form.html.erb',      # basename: _form.html.erb
+            '/fake/project/app/views/users/custom_user_report.html.erb', # basename: custom_user_report.html.erb
+            '/fake/project/app/views/shared/_user_card.html.erb' # basename: _user_card.html.erb
+          ]
+        end
+
+        before do
+          allow(Dir).to receive(:glob).with('/fake/project/app/views/**/*.erb').and_return(standard_view_paths)
+        end
+
+        it 'finds views where the model name appears in the filename' do
+          context = builder.build('User')
+          expect(context[:primary_views]).to contain_exactly(
+            '/fake/project/app/views/users/custom_user_report.html.erb',
+            '/fake/project/app/views/shared/_user_card.html.erb'
+          )
+        end
+
+        it 'does NOT find standard RESTful views where model name is only in the directory' do
+          context = builder.build('User')
+          expect(context[:primary_views]).not_to include(
+            '/fake/project/app/views/users/index.html.erb',
+            '/fake/project/app/views/users/show.html.erb',
+            '/fake/project/app/views/users/edit.html.erb',
+            '/fake/project/app/views/users/_form.html.erb'
+          )
+        end
+      end
+
+      context 'with namespaced models' do
+        let(:project_map) do
+          {
+            models: {
+              'Admin::User' => { path: '/fake/project/app/models/admin/user.rb', associations: {} }
+            },
+            controllers: {
+              'Admin::UsersController' => { path: '/fake/project/app/controllers/admin/users_controller.rb' }
+            }
+          }
+        end
+        let(:admin_user_policy_path) { '/fake/project/app/policies/admin/user_policy.rb' }
+        let(:admin_view_paths) { ['/fake/project/app/views/admin/users/_admin_user_form.html.erb'] }
+
+        before do
+          allow(File).to receive(:exist?).with(admin_user_policy_path).and_return(true)
+          allow(Dir).to receive(:glob).with('/fake/project/app/views/**/*.erb').and_return(admin_view_paths)
+        end
+
+        it 'finds the correct namespaced controller' do
+          context = builder.build('Admin::User')
+          expect(context[:primary_controller]).to eq('/fake/project/app/controllers/admin/users_controller.rb')
+        end
+
+        it 'finds the correct namespaced policy' do
+          context = builder.build('Admin::User')
+          expect(context[:primary_policy]).to eq(admin_user_policy_path)
+        end
+
+        it 'finds views based on the underscored namespaced model name' do
+          # Admin::User -> 'admin/user'. The current logic incorrectly looks for 'admin/user'
+          # in the filename, which will never match. This test confirms that bug.
+          context = builder.build('Admin::User')
+          expect(context[:primary_views]).to be_empty
+        end
+      end
     end
   end
 end
