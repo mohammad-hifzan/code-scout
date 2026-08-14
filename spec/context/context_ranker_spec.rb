@@ -147,5 +147,22 @@ RSpec.describe ContextRanker do
       end
     end
 
+    context 'with context containing unknown categories' do
+      let(:context) do
+        {
+          primary: ['/path/to/model.rb'],
+          unknown_category: ['/path/to/unknown.rb']
+        }
+      end
+
+      it 'ignores unknown categories and only ranks known ones' do
+        ranked_result = ranker.rank(context)
+
+        expect(ranked_result).to contain_exactly(
+          { path: '/path/to/model.rb', category: :primary, score: 100 }
+        )
+      end
+    end
+
   end
 end
