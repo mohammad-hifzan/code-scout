@@ -200,7 +200,76 @@ RSpec.describe ContextBuilder do
           )
         end
       end
+    end
+  end
 
+  # Test cases for the private method `related_models`
+  describe '#related_models' do
+    let(:project_map) do
+      {
+        models: {
+          'User' => {
+            path: '/fake/project/app/models/user.rb',
+            associations: { has_many: [:posts], belongs_to: [:account] }
+          },
+          'Post' => { path: '/fake/project/app/models/post.rb', associations: {} },
+          'Account' => { path: '/fake/project/app/models/account.rb', associations: {} },
+          'Comment' => {
+            path: '/fake/project/app/models/comment.rb',
+            associations: {
+              has_many: [:likes], # 'Like' model does not exist
+              belongs_to: [:user],
+              has_one: [:attachment]
+            }
+          },
+          'Attachment' => { path: '/fake/project/app/models/attachment.rb', associations: {} },
+          'Media' => { path: '/fake/project/app/models/media.rb', associations: {} }, # Irregular plural
+          'Content' => {
+            path: '/fake/project/app/models/content.rb',
+            associations: { has_many: [:media] }
+          }
+        }
+      }
+    end
+
+    it 'resolves `has_many` associations to existing models' do
+      related = builder.send(:related_models, project_map[:models]['User'])
+      expect(related).to include('/fake/project/app/models/post.rb')
+    end
+
+    it 'resolves `belongs_to` associations to existing models' do
+      related = builder.send(:related_models, project_map[:models]['User'])
+      expect(related).to include('/fake/project/app/models/account.rb')
+    end
+
+    it 'returns all related model paths from multiple association types' do
+      related = builder.send(:related_models, project_map[:models]['Comment'])
+      expect(related).to contain_exactly(
+        '/fake/project/app/models/user.rb',
+        '/fake/project/app/models/attachment.rb'
+      )
+    end
+
+    it 'ignores associations where the derived model does not exist in the project map' do
+      related = builder.send(:related_models, project_map[:models]['Comment'])
+      # 'likes' -> 'Like', which is not in the map
+      expect(related).not_to include(a_string_ending_with('like.rb'))
+    end
+
+    it 'returns an empty array for a model with no associations' do
+      related = builder.send(:related_models, project_map[:models]['Post'])
+      expect(related).to be_empty
+    end
+
+    context 'with irregular plurals' do
+      it 'fails to find the model if the singularization is incorrect' do
+        # The current implementation does: :media -> "media" -> singularize -> "medium" -> camelize -> "Medium"
+        # It looks for a "Medium" model, which does not exist in our map.
+        # This test confirms that it does NOT find the "Media" model.
+        related = builder.send(:related_models, project_map[:models]['Content'])
+        expect(related).to be_empty
+        expect(related).not_to include('/fake/project/app/models/media.rb')
+      end
     end
   end
 end
