@@ -69,14 +69,15 @@ class ContextBuilder
   end
 
   def primary_views(model_name)
-    keyword =
-      model_name.underscore
+    # Converts a model name like 'User' to 'users' or 'Admin::User' to 'admin/users'.
+    # This is the conventional directory name for views related to a model.
+    view_directory = model_name.underscore.pluralize
 
-    Dir.glob(
-      File.join(project_path, "app/views/**/*.erb")
-    ).select do |path|
-      File.basename(path).include?(keyword)
-    end
+    # Construct a path pattern to find all .erb files within that specific view directory.
+    # e.g., /path/to/project/app/views/users/**/*.erb
+    path_pattern = File.join(project_path, "app/views", view_directory, "**", "*.erb")
+
+    Dir.glob(path_pattern)
   end
   
 end
