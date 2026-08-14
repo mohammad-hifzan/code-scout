@@ -126,5 +126,26 @@ RSpec.describe ContextRanker do
         expect(ranked_result.map { |entry| entry[:score] }).to eq([80, 80, 60, 60])
       end
     end
+
+    context 'with category values as single strings instead of arrays' do
+      let(:context) do
+        {
+          primary: '/path/to/single_model.rb',
+          optional: '/path/to/single_view.html.erb'
+        }
+      end
+
+      it 'correctly ranks single string paths as if they were in an array' do
+        ranked_result = ranker.rank(context)
+
+        expect(ranked_result.size).to eq(2)
+        expect(ranked_result).to include(
+          { path: '/path/to/single_model.rb', category: :primary, score: 100 },
+          { path: '/path/to/single_view.html.erb', category: :optional, score: 30 }
+        )
+        expect(ranked_result.first[:path]).to eq('/path/to/single_model.rb')
+      end
+    end
+
   end
 end
