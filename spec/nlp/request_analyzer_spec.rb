@@ -37,4 +37,9 @@ RSpec.describe RequestAnalyzer do
       entity: "Shop"
     )
   end
+
+  it "defaults to the :edit action for generic requests" do
+    analysis = analyzer.analyze("some generic request")
+    expect(analysis[:action]).to eq(:edit)
+  end
 end
