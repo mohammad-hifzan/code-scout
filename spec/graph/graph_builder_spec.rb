@@ -224,5 +224,28 @@ RSpec.describe GraphBuilder do
         expect(graph[:associations][:has_many].first[:model]).to eq("SpecialComment")
       end
     end
+
+    context 'when one of several associations points to a missing model' do
+      let(:project_map) do
+        {
+          models: {
+            "User" => { associations: { belongs_to: [], has_many: ["posts", "phantom_items"], has_one: [] } },
+            "Post" => empty_associations
+            # Note: "PhantomItem" model is not defined in the map
+          }
+        }
+      end
+
+      it 'builds nodes for valid associations and silently ignores the missing one' do
+        graph = builder.build("User")
+
+        # It should not build a node for "phantom_items" but should not fail.
+        expect(graph[:associations][:has_many].size).to eq(1)
+
+        # It should still build the node for the valid "posts" association.
+        post_node = graph[:associations][:has_many].first
+        expect(post_node[:model]).to eq("Post")
+      end
+    end
   end
 end
