@@ -93,6 +93,24 @@ RSpec.describe ControllerUsageFinder do
       end
     end
 
+    context 'with a real routes.rb file' do
+      it 'correctly identifies used controllers via the actual RouteMapper' do
+        # This test uses the real RouteMapper against the fixture project's routes.
+        # The `before` block that mocks RouteMapper is scoped to the outer context
+        # and won't apply here if we instantiate our own finder.
+        allow(RouteMapper).to receive(:new).with(project_path).and_call_original
+        finder = described_class.new(project_path)
+
+        # Based on the contents of spec/fixtures/project/config/routes.rb
+        expect(finder.used_controllers).to contain_exactly(
+          'UsersController',
+          'PostsController',
+          'Admin::DashboardController',
+          'HomeController'
+        )
+      end
+    end
+
     context 'with missing files/directories', fakefs: true do
       it 'returns an empty array if project path does not exist' do
         # With FakeFS, the directory does not exist unless created
@@ -106,7 +124,8 @@ RSpec.describe ControllerUsageFinder do
         # Create project dir but not routes.rb
         FileUtils.mkdir_p(project_path)
         allow(RouteMapper).to receive(:new).with(project_path).and_call_original
-        expect(subject.used_controllers).to be_empty
+        finder = described_class.new(project_path)
+        expect(finder.used_controllers).to be_empty
       end
     end
   end
