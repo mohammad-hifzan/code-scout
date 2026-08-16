@@ -61,5 +61,13 @@ RSpec.describe ReferenceCategorizer do
       expect(result[:concerns]).to contain_exactly('/app/controllers/concerns/authenticatable.rb')
       expect(result[:controllers]).to be_empty
     end
+
+    it 'categorizes namespaced models correctly' do
+      files = ['/app/models/admin/user.rb']
+      result = categorizer.categorize(files)
+
+      expect(result[:models]).to contain_exactly('/app/models/admin/user.rb')
+      expect(result[:concerns]).to be_empty
+    end
   end
 end
