@@ -94,6 +94,13 @@ RSpec.describe ReferenceRanker do
         expect(result[:primary]).to be_empty
         expect(result[:secondary]).to include('/app/models/user.rb')
       end
+
+      it 'ranks files with no matching rule as tertiary' do
+        ranker = described_class.new('User')
+        files = { others: ['/lib/some_other_file.rb'] }
+        result = ranker.rank(files)
+        expect(result[:tertiary]).to include('/lib/some_other_file.rb')
+      end
     end
   end
 end
