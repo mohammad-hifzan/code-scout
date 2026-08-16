@@ -29,6 +29,8 @@ class DependencyWalker
   private
 
   def _collect_recursive(node, path_visited, collected_dependencies)
+    return if node.nil? # Handle nil child nodes gracefully
+
     model_name = node[:model]
 
     return if model_name.nil? # Handle child nodes with nil model or missing model key
