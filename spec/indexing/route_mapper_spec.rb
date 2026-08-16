@@ -98,6 +98,13 @@ RSpec.describe RouteMapper do
           a_hash_including(verb: 'DELETE', controller: 'ReviewsController', action: 'destroy')
         )
       end
+
+      it 'maps routes using the string `controller#action` syntax' do
+        create_routes_file("patch '/profile/update', 'profiles#update'")
+        expect(mapper.map).to include(
+          { type: 'custom', verb: 'PATCH', path: '/profile/update', controller: 'ProfilesController', action: 'update' }
+        )
+      end
     end
 
     context 'with namespaced resources' do

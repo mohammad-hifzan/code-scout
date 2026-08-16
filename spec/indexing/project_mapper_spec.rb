@@ -98,6 +98,27 @@ RSpec.describe ProjectMapper do
           expect(mapper.map[:models]).not_to have_key("ApplicationRecord")
         end
       end
+
+      context "with a namespaced model" do
+        let!(:namespaced_model_path) do
+          create_file "app/models/billing/invoice.rb", <<~RUBY
+            class Billing::Invoice < ApplicationRecord
+              belongs_to :customer
+            end
+          RUBY
+        end
+
+        it "identifies the namespaced model's path and class name" do
+          models = mapper.map[:models]
+          expect(models).to have_key("Billing::Invoice")
+          expect(models["Billing::Invoice"][:path]).to eq(namespaced_model_path)
+        end
+
+        it "extracts associations from the namespaced model" do
+          associations = mapper.map[:models]["Billing::Invoice"][:associations]
+          expect(associations[:belongs_to]).to eq(["customer"])
+        end
+      end
     end
 
     context "when scanning for controllers" do

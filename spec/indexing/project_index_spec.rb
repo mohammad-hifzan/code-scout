@@ -13,6 +13,25 @@ require_relative '../../lib/analysis/impact_analyzer'
 RSpec.describe ProjectIndex do
   subject(:project_index) { described_class.new(project_map, project_path) }
 
+  describe '#initialize' do
+    it 'initializes its analyzer dependencies with the project map and path' do
+      # Expect that the initializers are called with the correct arguments
+      expect(ContextBuilder).to receive(:new).with(project_map, project_path).and_return(context_builder)
+      expect(DependencyAnalyzer).to receive(:new).with(project_map, project_path).and_return(dependency_analyzer)
+      expect(ImpactAnalyzer).to receive(:new).with(project_map, project_path).and_return(impact_analyzer)
+
+      # We need to explicitly allow ModelAnalyzer, ControllerAnalyzer, and ViewAnalyzer to be stubbed
+      # because the main `before` block stubs them, and this test needs them stubbed too
+      allow(ModelAnalyzer).to receive(:new).and_return(model_analyzer)
+      allow(ControllerAnalyzer).to receive(:new).and_return(controller_analyzer)
+      allow(ViewAnalyzer).to receive(:new).and_return(view_analyzer)
+
+
+      # Instantiate the class to trigger the initialize method and its dependency initializations
+      described_class.new(project_map, project_path)
+    end
+  end
+
   let(:project_path) { '/fake/project' }
   let(:project_map) do
     {
