@@ -54,9 +54,12 @@ RSpec.describe ModelAnalyzer do
         path = create_model_file('post', content)
         result = analyzer.analyze(path)
         associations = result[:associations]
-        expect(associations[:has_many]).to contain_exactly('comments', 'likes')
-        expect(associations[:belongs_to]).to contain_exactly('user')
-        expect(associations[:has_one]).to contain_exactly('main_image')
+        expect(associations[:has_many]).to contain_exactly(
+          { name: 'comments' },
+          { name: 'likes' }
+        )
+        expect(associations[:belongs_to]).to contain_exactly({ name: 'user' })
+        expect(associations[:has_one]).to contain_exactly({ name: 'main_image', class_name: 'Image' })
       end
     end
 
@@ -73,7 +76,10 @@ RSpec.describe ModelAnalyzer do
       it 'extracts all has_many associations' do
         path = create_model_file('user', content)
         result = analyzer.analyze(path)
-        expect(result[:associations][:has_many]).to contain_exactly('posts', 'articles')
+        expect(result[:associations][:has_many]).to contain_exactly(
+          { name: 'posts' },
+          { name: 'articles' }
+        )
       end
     end
 
@@ -188,7 +194,9 @@ RSpec.describe ModelAnalyzer do
       it 'correctly parses multiline definitions' do
         path = create_model_file('product', content)
         result = analyzer.analyze(path)
-        expect(result[:associations][:has_many]).to contain_exactly('reviews')
+        expect(result[:associations][:has_many]).to contain_exactly(
+          { name: 'reviews', class_name: 'ProductReview' }
+        )
         expect(result[:validations]).to contain_exactly('name')
       end
     end

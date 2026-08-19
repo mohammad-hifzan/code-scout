@@ -106,8 +106,25 @@ class ModelAnalyzer
     private
 
     def add_association(type, args)
-      name = first_symbol(args)
-      @associations[type] << name if name
+      name_node = args.find { |arg| arg.type == :sym }
+      return unless name_node
+
+      name = name_node.children.first.to_s
+      options = {}
+      options_node = args.find { |arg| arg.type == :hash }
+      if options_node
+        options_node.children.each do |pair|
+          key_node, value_node = *pair
+          if key_node.type == :sym && key_node.children.first == :class_name
+            if value_node.type == :str
+              options[:class_name] = value_node.children.first
+            end
+          end
+        end
+      end
+      association_data = { name: name }
+      association_data[:class_name] = options[:class_name] if options[:class_name]
+      @associations[type] << association_data
     end
 
     def add_validations(args)
