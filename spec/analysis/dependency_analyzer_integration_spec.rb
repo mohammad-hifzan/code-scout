@@ -2,6 +2,7 @@ require 'spec_helper'
 require 'fileutils'
 require 'tmpdir'
 
+require_relative '../../lib/context/context_builder'
 require_relative '../../lib/analysis/dependency_analyzer'
 require_relative '../../lib/indexing/project_mapper'
 require_relative '../../lib/analysis/model_analyzer'
