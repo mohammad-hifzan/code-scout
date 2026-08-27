@@ -115,15 +115,26 @@ class ModelAnalyzer
       if options_node
         options_node.children.each do |pair|
           key_node, value_node = *pair
-          if key_node.type == :sym && key_node.children.first == :class_name
-            if value_node.type == :str
-              options[:class_name] = value_node.children.first
+          if key_node.type == :sym
+            key = key_node.children.first
+            value = extract_string_or_symbol_value(value_node)
+            next unless value
+
+            case key
+            when :class_name
+              options[:class_name] = value
+            when :through
+              options[:through] = value
+            when :source
+              options[:source] = value
             end
           end
         end
       end
       association_data = { name: name }
       association_data[:class_name] = options[:class_name] if options[:class_name]
+      association_data[:through] = options[:through] if options[:through]
+      association_data[:source] = options[:source] if options[:source]
       @associations[type] << association_data
     end
 
@@ -157,6 +168,12 @@ class ModelAnalyzer
     def first_symbol(args)
       arg = args.find { |argument| argument.type == :sym }
       arg&.children&.first&.to_s
+    end
+
+    def extract_string_or_symbol_value(node)
+      return node.children.first if node.type == :str
+      return node.children.first.to_s if node.type == :sym
+      nil
     end
   end
 end

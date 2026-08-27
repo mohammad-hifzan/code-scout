@@ -63,6 +63,86 @@ RSpec.describe ModelAnalyzer do
       end
     end
 
+    context 'with association options' do
+      let(:content) do
+        <<~RUBY
+          class Post < ApplicationRecord
+            has_many :items, class_name: "OrderItem"
+            has_many :commenters, through: :comments, source: :user
+            belongs_to :author, class_name: "User"
+            has_many :comments
+            has_one :profile, class_name: "UserProfile", through: :account
+            has_many :tags, through: :taggings
+            has_many :readers, through: :subscriptions, source: :user
+          end
+        RUBY
+      end
+
+      it 'extracts class_name option' do
+        path = create_model_file('post', content)
+        result = analyzer.analyze(path)
+        associations = result[:associations]
+
+        has_many = associations[:has_many]
+        expect(has_many).to include({ name: 'items', class_name: 'OrderItem' })
+        expect(has_many).to include({ name: 'comments' })
+        expect(has_many).to include({ name: 'tags', through: 'taggings' })
+        expect(has_many).to include({ name: 'readers', through: 'subscriptions', source: 'user' })
+
+        belongs_to = associations[:belongs_to]
+        expect(belongs_to).to include({ name: 'author', class_name: 'User' })
+
+        has_one = associations[:has_one]
+        expect(has_one).to include({ name: 'profile', class_name: 'UserProfile', through: 'account' })
+      end
+
+      it 'extracts through option alone' do
+        path = create_model_file('post', content)
+        result = analyzer.analyze(path)
+        associations = result[:associations]
+
+        has_many = associations[:has_many]
+        tags_assoc = has_many.find { |a| a[:name] == 'tags' }
+        expect(tags_assoc).to eq({ name: 'tags', through: 'taggings' })
+      end
+
+      it 'extracts through and source together' do
+        path = create_model_file('post', content)
+        result = analyzer.analyze(path)
+        associations = result[:associations]
+
+        has_many = associations[:has_many]
+        commenters_assoc = has_many.find { |a| a[:name] == 'commenters' }
+        readers_assoc = has_many.find { |a| a[:name] == 'readers' }
+
+        expect(commenters_assoc).to eq({ name: 'commenters', through: 'comments', source: 'user' })
+        expect(readers_assoc).to eq({ name: 'readers', through: 'subscriptions', source: 'user' })
+      end
+
+      it 'does not add keys for absent options on normal associations' do
+        path = create_model_file('post', content)
+        result = analyzer.analyze(path)
+        associations = result[:associations]
+
+        comments_assoc = associations[:has_many].find { |a| a[:name] == 'comments' }
+        expect(comments_assoc).to eq({ name: 'comments' })
+        expect(comments_assoc).not_to have_key(:class_name)
+        expect(comments_assoc).not_to have_key(:through)
+        expect(comments_assoc).not_to have_key(:source)
+      end
+
+      it 'handles multiple associations with different options' do
+        path = create_model_file('post', content)
+        result = analyzer.analyze(path)
+        associations = result[:associations]
+
+        # All associations should be present
+        expect(associations[:has_many].size).to eq(5)
+        expect(associations[:belongs_to].size).to eq(1)
+        expect(associations[:has_one].size).to eq(1)
+      end
+    end
+
     context 'with multiple associations of the same type' do
       let(:content) do
         <<~RUBY
