@@ -60,6 +60,8 @@ class GraphBuilder
       target_model_name =
         if assoc[:class_name]
           assoc[:class_name]
+        elsif assoc[:source]
+          assoc[:source].to_s.singularize.camelize
         else
           assoc[:name].singularize.camelize
         end

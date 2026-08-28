@@ -44,6 +44,33 @@ RSpec.describe GraphBuilder do
       end
     end
 
+    context "with 'through' and 'source' options" do
+      before do
+        create_model_file('post', <<~RUBY)
+          class Post < ApplicationRecord
+            has_many :comments
+            has_many :commenters, through: :comments, source: :user
+          end
+        RUBY
+        create_model_file('comment', <<~RUBY)
+          class Comment < ApplicationRecord
+            belongs_to :post
+          end
+        RUBY
+        create_model_file('user', <<~RUBY)
+          class User < ApplicationRecord
+            has_many :comments
+          end
+        RUBY
+      end
+
+      it 'resolves the dependency using the source option' do
+        graph = builder.build('Post')
+        has_many_models = graph[:associations][:has_many].map { |n| n[:model] }
+        expect(has_many_models).to include('User')
+      end
+    end
+
     context 'with a standard has_many association' do
       before do
         create_model_file('user', <<~RUBY)
