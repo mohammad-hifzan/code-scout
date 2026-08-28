@@ -261,6 +261,41 @@ RSpec.describe ContextBuilder do
       expect(related).to be_empty
     end
 
+    context 'with structured association metadata' do
+      let(:project_map) do
+        {
+          models: {
+            'Order' => {
+              path: '/fake/project/app/models/order.rb',
+              associations: {
+                has_many: [
+                  { name: 'items', class_name: 'OrderItem' },
+                  { name: 'commenters', through: 'comments', source: 'user' }
+                ],
+                belongs_to: [
+                  { name: 'author', class_name: 'Admin::User' }
+                ]
+              }
+            },
+            'OrderItem' => { path: '/fake/project/app/models/order_item.rb', associations: {} },
+            'Admin::User' => { path: '/fake/project/app/models/admin/user.rb', associations: {} },
+            'User' => { path: '/fake/project/app/models/user.rb', associations: {} }
+          }
+        }
+      end
+
+      it 'resolves explicit class_name targets for has_many and belongs_to' do
+        related = builder.send(:related_models, project_map[:models]['Order'])
+        expect(related).to include('/fake/project/app/models/order_item.rb')
+        expect(related).to include('/fake/project/app/models/admin/user.rb')
+      end
+
+      it 'does not treat source option as a direct dependency for through/source associations' do
+        related = builder.send(:related_models, project_map[:models]['Order'])
+        expect(related).not_to include('/fake/project/app/models/user.rb')
+      end
+    end
+
     context 'with irregular plurals' do
       it 'fails to find the model if the singularization is incorrect' do
         # The current implementation does: :media -> "media" -> singularize -> "medium" -> camelize -> "Medium"

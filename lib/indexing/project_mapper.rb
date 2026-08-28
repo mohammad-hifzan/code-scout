@@ -1,9 +1,11 @@
 require "active_support/inflector"
 require "pathname"
+require_relative "../analysis/model_analyzer"
 
 class ProjectMapper
   def initialize(project_path)
     @project_path = project_path
+    @model_analyzer = ModelAnalyzer.new
   end
 
   def map
@@ -19,13 +21,7 @@ class ProjectMapper
   attr_reader :project_path
 
   def extract_associations(model_path)
-    content = File.read(model_path)
-
-    {
-      belongs_to: content.scan(/belongs_to\s+:([a-z_]+)/).flatten,
-      has_many: content.scan(/has_many\s+:([a-z_]+)/).flatten,
-      has_one: content.scan(/has_one\s+:([a-z_]+)/).flatten
-    }
+    @model_analyzer.analyze(model_path)[:associations]
   end
 
   def controllers

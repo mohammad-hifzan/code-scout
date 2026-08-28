@@ -16,9 +16,8 @@ RSpec.describe 'DependencyAnalyzer Integration' do
   after { FileUtils.remove_entry(project_path) }
 
   def create_model_file(name, content)
-    path = File.join(project_path, 'app', 'models')
-    FileUtils.mkdir_p(path)
-    full_path = File.join(path, "#{name}.rb")
+    full_path = File.join(project_path, 'app', 'models', "#{name}.rb")
+    FileUtils.mkdir_p(File.dirname(full_path))
     File.write(full_path, content)
   end
 
@@ -42,13 +41,11 @@ RSpec.describe 'DependencyAnalyzer Integration' do
       )
     end
 
-    it 'fails to identify OrderItem as a dependency of Order' do
+    it 'identifies OrderItem as a direct dependency of Order' do
       result = analyzer.analyze('Order')
       
-      # The current, incorrect implementation will likely resolve :items to "Item".
-      # "Item" doesn't exist, so the dependency will be missed.
-      # We assert that the correct dependency, "OrderItem", is found.
-      # This test will fail, demonstrating the gap.
+      expect(result[:direct_dependencies][:models]).to include('OrderItem')
+      expect(result[:transitive_dependencies]).not_to include('OrderItem')
       all_dependencies = result[:direct_dependencies][:models] + result[:transitive_dependencies]
       expect(all_dependencies).to include('OrderItem')
     end
@@ -83,19 +80,42 @@ RSpec.describe 'DependencyAnalyzer Integration' do
       )
     end
 
-    it 'fails to identify User as a dependency of Post through :commenters' do
+    it 'identifies User as a transitive dependency of Post without incorrectly making it direct' do
       result = analyzer.analyze('Post')
 
-      # The current, incorrect implementation will resolve :commenters to "Commenter".
-      # "Commenter" doesn't exist.
-      # We assert that the correct dependency, "User", is found.
-      # This test will fail.
-      #
-      # The dependency on User might be found via Comment -> User, but we
-      # want to prove that the `through/source` path is broken.
-      # The assertion is on the total dependency set.
+      expect(result[:direct_dependencies][:models]).to include('Comment')
+      expect(result[:direct_dependencies][:models]).not_to include('User')
+      expect(result[:transitive_dependencies]).to include('User')
       all_dependencies = result[:direct_dependencies][:models] + result[:transitive_dependencies]
       expect(all_dependencies).to include('User')
+    end
+  end
+
+  context "with namespaced models in associations" do
+    before do
+      create_model_file(
+        'account',
+        <<~RUBY
+          class Account < ApplicationRecord
+            belongs_to :admin_user, class_name: "Admin::User"
+          end
+        RUBY
+      )
+      create_model_file(
+        'admin/user',
+        <<~RUBY
+          module Admin
+            class User < ApplicationRecord
+            end
+          end
+        RUBY
+      )
+    end
+
+    it 'correctly identifies namespaced models as direct dependencies' do
+      result = analyzer.analyze('Account')
+
+      expect(result[:direct_dependencies][:models]).to include('Admin::User')
     end
   end
 end

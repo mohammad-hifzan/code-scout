@@ -56,12 +56,19 @@ class ContextBuilder
     associations =
       model[:associations]
 
-    names =
-      associations.values.flatten
+    return [] unless associations
 
-    names.filter_map do |name|
+    associations.values.flatten.filter_map do |assoc|
       model_name =
-        name.to_s.singularize.camelize
+        if assoc.is_a?(Hash)
+          if assoc[:class_name]
+            assoc[:class_name]
+          else
+            assoc[:name].to_s.singularize.camelize
+          end
+        else
+          assoc.to_s.singularize.camelize
+        end
 
       project_map[:models][model_name]
         &.dig(:path)

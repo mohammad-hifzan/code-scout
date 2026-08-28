@@ -51,9 +51,9 @@ RSpec.describe ProjectMapper do
 
         it "extracts all association types correctly" do
           associations = mapper.map[:models]["User"][:associations]
-          expect(associations[:has_many]).to eq(["posts"])
-          expect(associations[:belongs_to]).to eq(["account"])
-          expect(associations[:has_one]).to eq(["profile"])
+          expect(associations[:has_many]).to eq([{ name: "posts" }])
+          expect(associations[:belongs_to]).to eq([{ name: "account" }])
+          expect(associations[:has_one]).to eq([{ name: "profile" }])
         end
       end
 
@@ -87,7 +87,34 @@ RSpec.describe ProjectMapper do
 
         it "correctly matches the association" do
           associations = mapper.map[:models]["Team"][:associations]
-          expect(associations[:has_many]).to eq(["memberships"])
+          expect(associations[:has_many]).to eq([{ name: "memberships" }])
+        end
+      end
+
+      context "with associations having options (class_name, through, source)" do
+        before do
+          create_file "app/models/post.rb", <<~RUBY
+            class Post < ApplicationRecord
+              has_many :items, class_name: "OrderItem"
+              has_many :commenters, through: :comments, source: :user
+              belongs_to :author, class_name: "User"
+              has_one :profile, class_name: "UserProfile", through: :account
+            end
+          RUBY
+        end
+
+        it "preserves structured association metadata" do
+          associations = mapper.map[:models]["Post"][:associations]
+          expect(associations[:has_many]).to include(
+            { name: "items", class_name: "OrderItem" },
+            { name: "commenters", through: "comments", source: "user" }
+          )
+          expect(associations[:belongs_to]).to include(
+            { name: "author", class_name: "User" }
+          )
+          expect(associations[:has_one]).to include(
+            { name: "profile", class_name: "UserProfile", through: "account" }
+          )
         end
       end
 
@@ -116,7 +143,7 @@ RSpec.describe ProjectMapper do
 
         it "extracts associations from the namespaced model" do
           associations = mapper.map[:models]["Billing::Invoice"][:associations]
-          expect(associations[:belongs_to]).to eq(["customer"])
+          expect(associations[:belongs_to]).to eq([{ name: "customer" }])
         end
       end
     end
@@ -190,8 +217,8 @@ RSpec.describe ProjectMapper do
         # Verify models
         expect(result[:models].keys).to contain_exactly("User", "Post")
         expect(result[:models]["User"][:path]).to eq(user_model_path)
-        expect(result[:models]["User"][:associations][:has_many]).to eq(["posts"])
-        expect(result[:models]["Post"][:associations][:belongs_to]).to eq(["user"])
+        expect(result[:models]["User"][:associations][:has_many]).to eq([{ name: "posts" }])
+        expect(result[:models]["Post"][:associations][:belongs_to]).to eq([{ name: "user" }])
 
         # Verify controllers
         expect(result[:controllers].keys).to contain_exactly("UsersController")
