@@ -44,6 +44,27 @@ RSpec.describe GraphBuilder do
       end
     end
 
+    context 'with namespaced associations' do
+      before do
+        FileUtils.mkdir_p(File.join(project_path, 'app', 'models', 'billing'))
+        create_model_file('billing/invoice', <<~RUBY)
+          class Billing::Invoice < ApplicationRecord
+            belongs_to :customer
+          end
+        RUBY
+        create_model_file('billing/customer', <<~RUBY)
+          class Billing::Customer < ApplicationRecord
+          end
+        RUBY
+      end
+
+      it 'resolves the association relative to the namespace' do
+        graph = builder.build('Billing::Invoice')
+        customer_node = graph[:associations][:belongs_to].first
+        expect(customer_node[:model]).to eq('Billing::Customer')
+      end
+    end
+
     context "with 'through' and 'source' options" do
       before do
         create_model_file('post', <<~RUBY)

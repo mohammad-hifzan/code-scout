@@ -1,11 +1,13 @@
 # lib/graph_builder.rb
 require "active_support/core_ext/string/inflections"
 require_relative "../analysis/model_analyzer"
+require_relative "../analysis/association_resolver"
 
 class GraphBuilder
   def initialize(project_map)
     @project_map = project_map
     @model_analyzer = ModelAnalyzer.new
+    @association_resolver = AssociationResolver.new(project_map)
     @association_cache = {}
   end
 
@@ -41,30 +43,28 @@ class GraphBuilder
       associations: {
         belongs_to: children_for(
           associations[:belongs_to],
-          new_visited
+          new_visited,
+          model_name
         ),
         has_many: children_for(
           associations[:has_many],
-          new_visited
+          new_visited,
+          model_name
         ),
         has_one: children_for(
           associations[:has_one],
-          new_visited
+          new_visited,
+          model_name
         )
       }
     }
   end
 
-  def children_for(associations, visited)
+  def children_for(associations, visited, current_model_name)
     associations.map do |assoc|
-      target_model_name =
-        if assoc[:class_name]
-          assoc[:class_name]
-        elsif assoc[:source]
-          assoc[:source].to_s.singularize.camelize
-        else
-          assoc[:name].singularize.camelize
-        end
+      target_model_name = @association_resolver.target_model(current_model_name, assoc)
+      next unless target_model_name
+
       traverse(target_model_name, visited)
     end.compact
   end

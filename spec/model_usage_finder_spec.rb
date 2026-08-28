@@ -123,6 +123,50 @@ RSpec.describe ModelUsageFinder do
       end
     end
 
+    context 'with through and source options' do
+      let(:project_map) do
+        {
+          models: {
+            'Post' => {
+              associations: {
+                has_many: [
+                  { name: 'comments' },
+                  { name: 'commenters', through: 'comments', source: 'user' }
+                ],
+                belongs_to: [],
+                has_one: []
+              }
+            },
+            'Comment' => { associations: { has_many: [], belongs_to: [], has_one: [] } },
+            'User' => { associations: { has_many: [], belongs_to: [], has_one: [] } }
+          }
+        }
+      end
 
+      it 'identifies the target model from the source option' do
+        expect(finder.used_models).to contain_exactly('Comment', 'User')
+      end
+    end
+
+    context 'with namespaced model association resolution' do
+      let(:project_map) do
+        {
+          models: {
+            'Admin::User' => {
+              associations: {
+                belongs_to: [{ name: 'profile' }],
+                has_many: [],
+                has_one: []
+              }
+            },
+            'Admin::Profile' => { associations: { has_many: [], belongs_to: [], has_one: [] } }
+          }
+        }
+      end
+
+      it 'resolves association relative to the declaring model namespace' do
+        expect(finder.used_models).to contain_exactly('Admin::Profile')
+      end
+    end
   end
 end

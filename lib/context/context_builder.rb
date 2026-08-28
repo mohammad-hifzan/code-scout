@@ -1,13 +1,16 @@
 require "active_support/inflector"
+require_relative "../analysis/association_resolver"
+
 class ContextBuilder
   def initialize(project_map, project_path)
     @project_map = project_map
     @project_path = project_path
+    @association_resolver = AssociationResolver.new(project_map)
   end
 
   def build(model_name)
     model =
-      project_map[:models][model_name]
+      project_map.dig(:models, model_name)
 
     return nil unless model
 
@@ -21,7 +24,7 @@ class ContextBuilder
         primary_policy(model_name),
 
       related_models:
-        related_models(model),
+        related_models(model, model_name),
 
       primary_views:
         primary_views(model_name)
@@ -37,7 +40,7 @@ class ContextBuilder
       "#{model_name.pluralize}Controller"
 
     controller =
-      project_map[:controllers][controller_name]
+      project_map.dig(:controllers, controller_name)
 
     controller&.dig(:path)
   end
@@ -52,25 +55,24 @@ class ContextBuilder
     File.exist?(policy_file) ? policy_file : nil
   end
 
-  def related_models(model)
+  def related_models(model, current_model_name = nil)
     associations =
       model[:associations]
 
     return [] unless associations
 
     associations.values.flatten.filter_map do |assoc|
-      model_name =
-        if assoc.is_a?(Hash)
-          if assoc[:class_name]
-            assoc[:class_name]
-          else
-            assoc[:name].to_s.singularize.camelize
-          end
+      direct_assoc =
+        if assoc.is_a?(Hash) && assoc[:source]
+          assoc.reject { |k, _| k == :source }
         else
-          assoc.to_s.singularize.camelize
+          assoc
         end
 
-      project_map[:models][model_name]
+      target_model_name = @association_resolver.target_model(current_model_name, direct_assoc)
+      next unless target_model_name
+
+      project_map[:models][target_model_name]
         &.dig(:path)
     end
   end

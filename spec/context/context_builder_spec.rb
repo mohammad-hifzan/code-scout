@@ -294,6 +294,33 @@ RSpec.describe ContextBuilder do
         related = builder.send(:related_models, project_map[:models]['Order'])
         expect(related).not_to include('/fake/project/app/models/user.rb')
       end
+
+      context 'with namespaced model resolving relative association' do
+        let(:project_map) do
+          {
+            models: {
+              'Billing::Invoice' => {
+                path: '/fake/project/app/models/billing/invoice.rb',
+                associations: {
+                  belongs_to: [{ name: 'customer' }]
+                }
+              },
+              'Billing::Customer' => {
+                path: '/fake/project/app/models/billing/customer.rb',
+                associations: {}
+              }
+            },
+            controllers: {}
+          }
+        end
+
+        it 'resolves the association relative to the model namespace' do
+          context = builder.build('Billing::Invoice')
+          expect(context[:related_models]).to contain_exactly(
+            '/fake/project/app/models/billing/customer.rb'
+          )
+        end
+      end
     end
 
     context 'with irregular plurals' do
