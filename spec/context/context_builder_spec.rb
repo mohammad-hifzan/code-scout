@@ -341,6 +341,60 @@ RSpec.describe ContextBuilder do
       end
     end
 
+    context 'with polymorphic associations' do
+      let(:project_map) do
+        {
+          models: {
+            'Picture' => {
+              path: '/fake/project/app/models/picture.rb',
+              associations: {
+                belongs_to: [{ name: 'imageable', polymorphic: true }]
+              }
+            },
+            'Post' => {
+              path: '/fake/project/app/models/post.rb',
+              associations: {
+                has_many: [{ name: 'pictures', as: 'imageable' }]
+              }
+            },
+            'MixedModel' => {
+              path: '/fake/project/app/models/mixed_model.rb',
+              associations: {
+                belongs_to: [{ name: 'imageable', polymorphic: true }],
+                has_many: [{ name: 'posts' }]
+              }
+            },
+            'Imageable' => {
+              path: '/fake/project/app/models/imageable.rb',
+              associations: {}
+            }
+          },
+          controllers: {}
+        }
+      end
+
+      it 'does not treat polymorphic belongs_to interface as a related model' do
+        context = builder.build('Picture')
+        expect(context[:related_models]).to be_empty
+        expect(context[:related_models]).not_to include('/fake/project/app/models/imageable.rb')
+      end
+
+      it 'does not resolve to Imageable model even when Imageable exists in the project map' do
+        related = builder.send(:related_models, project_map[:models]['Picture'], 'Picture')
+        expect(related).to be_empty
+      end
+
+      it 'resolves the target model for has_many with as: option normally' do
+        context = builder.build('Post')
+        expect(context[:related_models]).to contain_exactly('/fake/project/app/models/picture.rb')
+      end
+
+      it 'resolves concrete associations while ignoring polymorphic ones in mixed models' do
+        context = builder.build('MixedModel')
+        expect(context[:related_models]).to contain_exactly('/fake/project/app/models/post.rb')
+      end
+    end
+
     context 'with irregular plurals' do
       it 'fails to find the model if the singularization is incorrect' do
         # The current implementation does: :media -> "media" -> singularize -> "medium" -> camelize -> "Medium"
