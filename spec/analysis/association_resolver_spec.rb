@@ -166,13 +166,53 @@ RSpec.describe AssociationResolver do
       end
     end
 
-    context "polymorphic associations (documented limitation)" do
-      # ModelAnalyzer does not currently extract polymorphic: true or as: :likeable.
-      # When given an association name pointing to an interface, AssociationResolver
-      # inflects the symbol conventionally without pretending to know concrete models.
-      it "inflects the name without fabricating concrete polymorphic targets" do
-        result = resolver.resolve("Picture", { name: "imageable" })
-        expect(result[:target_model]).to eq("Imageable")
+    context "with polymorphic associations" do
+      it "resolves belongs_to with polymorphic: true to target_model: nil and preserves polymorphic: true" do
+        result = resolver.resolve("Picture", { name: "imageable", polymorphic: true })
+        expect(result).to eq({
+          target_model: nil,
+          through_model: nil,
+          polymorphic: true
+        })
+      end
+
+      it "does not infer concrete model name for polymorphic belongs_to" do
+        result = resolver.resolve("Attachment", { name: "attachable", polymorphic: true })
+        expect(result[:target_model]).to be_nil
+        expect(result[:polymorphic]).to be true
+      end
+
+      it "resolves target_model to nil even when project_map contains a model with the interface name" do
+        map_with_imageable = {
+          models: {
+            "Imageable" => { path: "/app/models/imageable.rb" }
+          }
+        }
+        res = described_class.new(map_with_imageable)
+        result = res.resolve("Picture", { name: "imageable", polymorphic: true })
+        expect(result[:target_model]).to be_nil
+      end
+
+      it "still resolves target_model normally for has_many with as: option" do
+        result = resolver.resolve("Post", { name: "pictures", as: "imageable" })
+        expect(result[:target_model]).to eq("Picture")
+        expect(result[:through_model]).to be_nil
+        expect(result).not_to have_key(:polymorphic)
+      end
+
+      it "still resolves target_model normally for has_one with as: option" do
+        result = resolver.resolve("User", { name: "avatar", as: "imageable" })
+        expect(result[:target_model]).to eq("Avatar")
+        expect(result[:through_model]).to be_nil
+        expect(result).not_to have_key(:polymorphic)
+      end
+
+      it "treats polymorphic: false as a normal association" do
+        result = resolver.resolve("Comment", { name: "post", polymorphic: false })
+        expect(result).to eq({
+          target_model: "Post",
+          through_model: nil
+        })
       end
     end
   end

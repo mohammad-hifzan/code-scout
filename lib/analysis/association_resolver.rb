@@ -14,10 +14,12 @@ class AssociationResolver
     assoc = normalize_assoc_data(assoc_data)
     return empty_result if assoc.nil? || assoc.empty?
 
-    {
+    result = {
       target_model: resolve_target_model(model_name, assoc),
       through_model: resolve_through_model(model_name, assoc)
     }
+    result[:polymorphic] = true if assoc[:polymorphic] == true
+    result
   end
 
   def target_model(model_name, assoc_data)
@@ -51,6 +53,8 @@ class AssociationResolver
   end
 
   def resolve_target_model(model_name, assoc)
+    return nil if assoc[:polymorphic] == true
+
     if assoc[:class_name] && !assoc[:class_name].to_s.empty?
       assoc[:class_name].to_s
     elsif assoc[:source] && !assoc[:source].to_s.empty?
