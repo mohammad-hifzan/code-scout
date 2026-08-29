@@ -56,7 +56,7 @@ RSpec.describe ModelAnalyzer do
         associations = result[:associations]
         expect(associations[:has_many]).to contain_exactly(
           { name: 'comments' },
-          { name: 'likes' }
+          { name: 'likes', as: 'likeable' }
         )
         expect(associations[:belongs_to]).to contain_exactly({ name: 'user' })
         expect(associations[:has_one]).to contain_exactly({ name: 'main_image', class_name: 'Image' })
@@ -278,6 +278,101 @@ RSpec.describe ModelAnalyzer do
           { name: 'reviews', class_name: 'ProductReview' }
         )
         expect(result[:validations]).to contain_exactly('name')
+      end
+    end
+
+    context 'with polymorphic associations' do
+      it 'extracts polymorphic: true on belongs_to' do
+        path = create_model_file('picture', <<~RUBY)
+          class Picture < ApplicationRecord
+            belongs_to :imageable, polymorphic: true
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:associations][:belongs_to]).to contain_exactly(
+          { name: 'imageable', polymorphic: true }
+        )
+      end
+
+      it 'extracts as: option on has_many' do
+        path = create_model_file('post', <<~RUBY)
+          class Post < ApplicationRecord
+            has_many :pictures, as: :imageable
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:associations][:has_many]).to contain_exactly(
+          { name: 'pictures', as: 'imageable' }
+        )
+      end
+
+      it 'extracts as: option on has_one' do
+        path = create_model_file('user', <<~RUBY)
+          class User < ApplicationRecord
+            has_one :avatar, as: :imageable
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:associations][:has_one]).to contain_exactly(
+          { name: 'avatar', as: 'imageable' }
+        )
+      end
+
+      it 'supports string-style as: option values' do
+        path = create_model_file('post', <<~RUBY)
+          class Post < ApplicationRecord
+            has_many :pictures, as: "imageable"
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:associations][:has_many]).to contain_exactly(
+          { name: 'pictures', as: 'imageable' }
+        )
+      end
+
+      it 'supports hash-rocket syntax for polymorphic and as options' do
+        path = create_model_file('picture', <<~RUBY)
+          class Picture < ApplicationRecord
+            belongs_to :imageable, :polymorphic => true
+            has_many :tags, :as => :taggable
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:associations][:belongs_to]).to contain_exactly(
+          { name: 'imageable', polymorphic: true }
+        )
+        expect(result[:associations][:has_many]).to contain_exactly(
+          { name: 'tags', as: 'taggable' }
+        )
+      end
+
+      it 'supports multiline polymorphic association declarations' do
+        path = create_model_file('attachment', <<~RUBY)
+          class Attachment < ApplicationRecord
+            belongs_to(
+              :attachable,
+              polymorphic: true,
+              optional: true
+            )
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:associations][:belongs_to]).to contain_exactly(
+          { name: 'attachable', polymorphic: true }
+        )
+      end
+
+      it 'does not set polymorphic: true when polymorphic: false is given' do
+        path = create_model_file('comment', <<~RUBY)
+          class Comment < ApplicationRecord
+            belongs_to :post, polymorphic: false
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:associations][:belongs_to]).to contain_exactly(
+          { name: 'post' }
+        )
+        expect(result[:associations][:belongs_to].first).not_to have_key(:polymorphic)
       end
     end
   end

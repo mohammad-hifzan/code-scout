@@ -117,16 +117,22 @@ class ModelAnalyzer
           key_node, value_node = *pair
           if key_node.type == :sym
             key = key_node.children.first
-            value = extract_string_or_symbol_value(value_node)
-            next unless value
 
             case key
             when :class_name
-              options[:class_name] = value
+              value = extract_string_or_symbol_value(value_node)
+              options[:class_name] = value if value
             when :through
-              options[:through] = value
+              value = extract_string_or_symbol_value(value_node)
+              options[:through] = value if value
             when :source
-              options[:source] = value
+              value = extract_string_or_symbol_value(value_node)
+              options[:source] = value if value
+            when :as
+              value = extract_string_or_symbol_value(value_node)
+              options[:as] = value if value
+            when :polymorphic
+              options[:polymorphic] = true if value_node.type == :true
             end
           end
         end
@@ -135,6 +141,8 @@ class ModelAnalyzer
       association_data[:class_name] = options[:class_name] if options[:class_name]
       association_data[:through] = options[:through] if options[:through]
       association_data[:source] = options[:source] if options[:source]
+      association_data[:as] = options[:as] if options[:as]
+      association_data[:polymorphic] = true if options[:polymorphic]
       @associations[type] << association_data
     end
 
