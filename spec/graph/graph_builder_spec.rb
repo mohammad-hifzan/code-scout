@@ -258,5 +258,84 @@ RSpec.describe GraphBuilder do
         expect(post_node[:associations][:belongs_to]).to be_empty
       end
     end
+
+    context 'with polymorphic belongs_to association' do
+      before do
+        create_model_file('picture', <<~RUBY)
+          class Picture < ApplicationRecord
+            belongs_to :imageable, polymorphic: true
+          end
+        RUBY
+      end
+
+      it 'does not create a graph node for the polymorphic interface and does not raise' do
+        graph = builder.build('Picture')
+        expect(graph[:model]).to eq('Picture')
+        expect(graph[:associations][:belongs_to]).to be_empty
+      end
+    end
+
+    context 'with polymorphic belongs_to when a model with the interface name exists in the project' do
+      before do
+        create_model_file('picture', <<~RUBY)
+          class Picture < ApplicationRecord
+            belongs_to :imageable, polymorphic: true
+          end
+        RUBY
+        create_model_file('imageable', <<~RUBY)
+          class Imageable < ApplicationRecord
+          end
+        RUBY
+      end
+
+      it 'does not traverse the Imageable model for the polymorphic association' do
+        graph = builder.build('Picture')
+        expect(graph[:associations][:belongs_to]).to be_empty
+      end
+    end
+
+    context 'with has_many using as: option' do
+      before do
+        create_model_file('post', <<~RUBY)
+          class Post < ApplicationRecord
+            has_many :pictures, as: :imageable
+          end
+        RUBY
+        create_model_file('picture', <<~RUBY)
+          class Picture < ApplicationRecord
+            belongs_to :imageable, polymorphic: true
+          end
+        RUBY
+      end
+
+      it 'traverses the target model without creating an Imageable node' do
+        graph = builder.build('Post')
+        has_many_nodes = graph[:associations][:has_many]
+        expect(has_many_nodes.map { |n| n[:model] }).to contain_exactly('Picture')
+        picture_node = has_many_nodes.first
+        expect(picture_node[:associations][:belongs_to]).to be_empty
+      end
+    end
+
+    context 'with mixed polymorphic and concrete associations' do
+      before do
+        create_model_file('picture', <<~RUBY)
+          class Picture < ApplicationRecord
+            belongs_to :imageable, polymorphic: true
+            has_many :tags
+          end
+        RUBY
+        create_model_file('tag', <<~RUBY)
+          class Tag < ApplicationRecord
+          end
+        RUBY
+      end
+
+      it 'traverses only the statically resolvable concrete associations' do
+        graph = builder.build('Picture')
+        expect(graph[:associations][:belongs_to]).to be_empty
+        expect(graph[:associations][:has_many].map { |n| n[:model] }).to contain_exactly('Tag')
+      end
+    end
   end
 end

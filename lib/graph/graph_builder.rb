@@ -30,6 +30,7 @@ class GraphBuilder
   end
 
   def traverse(model_name, visited)
+    return nil if model_name.nil?
     return nil if visited.include?(model_name)
     return nil unless project_map.dig(:models, model_name)
 
