@@ -91,6 +91,46 @@ RSpec.describe 'DependencyAnalyzer Integration' do
     end
   end
 
+  context "with 'through' without explicit join association (implicit through model)" do
+    before do
+      create_model_file(
+        'post',
+        <<~RUBY
+          class Post < ApplicationRecord
+            has_many :tags, through: :taggings
+          end
+        RUBY
+      )
+      create_model_file(
+        'tagging',
+        <<~RUBY
+          class Tagging < ApplicationRecord
+            belongs_to :post
+            belongs_to :tag
+          end
+        RUBY
+      )
+      create_model_file(
+        'tag',
+        <<~RUBY
+          class Tag < ApplicationRecord
+            has_many :taggings
+          end
+        RUBY
+      )
+    end
+
+    it 'classifies Tagging as direct dependency and Tag as transitive dependency' do
+      result = analyzer.analyze('Post')
+
+      expect(result[:direct_dependencies][:models]).to include('Tagging')
+      expect(result[:direct_dependencies][:models]).not_to include('Tag')
+      expect(result[:transitive_dependencies]).to include('Tag')
+      all_dependencies = result[:direct_dependencies][:models] + result[:transitive_dependencies]
+      expect(all_dependencies).to contain_exactly('Tagging', 'Tag')
+    end
+  end
+
   context "with namespaced models in associations" do
     before do
       create_model_file(

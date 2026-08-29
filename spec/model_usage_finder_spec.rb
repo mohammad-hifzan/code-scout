@@ -123,6 +123,30 @@ RSpec.describe ModelUsageFinder do
       end
     end
 
+    context 'with through option without source' do
+      let(:project_map) do
+        {
+          models: {
+            'Post' => {
+              associations: {
+                has_many: [
+                  { name: 'tags', through: 'taggings' }
+                ],
+                belongs_to: [],
+                has_one: []
+              }
+            },
+            'Tagging' => { associations: { has_many: [], belongs_to: [], has_one: [] } },
+            'Tag' => { associations: { has_many: [], belongs_to: [], has_one: [] } }
+          }
+        }
+      end
+
+      it 'identifies both the through join model and the target model without duplicates' do
+        expect(finder.used_models).to contain_exactly('Tagging', 'Tag')
+      end
+    end
+
     context 'with through and source options' do
       let(:project_map) do
         {

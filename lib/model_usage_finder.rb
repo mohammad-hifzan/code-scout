@@ -17,8 +17,9 @@ class ModelUsageFinder
 
       [:belongs_to, :has_many, :has_one].each do |type|
         Array(associations[type]).each do |association|
-          target = @association_resolver.target_model(model_name, association)
-          used << target if target
+          resolved = @association_resolver.resolve(model_name, association)
+          used << resolved[:through_model] if resolved[:through_model]
+          used << resolved[:target_model] if resolved[:target_model]
         end
       end
     end

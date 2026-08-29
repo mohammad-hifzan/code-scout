@@ -61,11 +61,18 @@ class GraphBuilder
   end
 
   def children_for(associations, visited, current_model_name)
-    associations.map do |assoc|
-      target_model_name = @association_resolver.target_model(current_model_name, assoc)
-      next unless target_model_name
+    seen_models = Set.new
 
-      traverse(target_model_name, visited)
-    end.compact
+    associations.flat_map do |assoc|
+      resolved = @association_resolver.resolve(current_model_name, assoc)
+      models_to_traverse = [resolved[:through_model], resolved[:target_model]].compact
+
+      models_to_traverse.filter_map do |target_model_name|
+        next if seen_models.include?(target_model_name)
+
+        seen_models << target_model_name
+        traverse(target_model_name, visited)
+      end
+    end
   end
 end

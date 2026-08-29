@@ -65,6 +65,81 @@ RSpec.describe GraphBuilder do
       end
     end
 
+    context "with 'through' without explicit join association (implicit through model)" do
+      before do
+        create_model_file('post', <<~RUBY)
+          class Post < ApplicationRecord
+            has_many :tags, through: :taggings
+          end
+        RUBY
+        create_model_file('tagging', <<~RUBY)
+          class Tagging < ApplicationRecord
+            belongs_to :post
+            belongs_to :tag
+          end
+        RUBY
+        create_model_file('tag', <<~RUBY)
+          class Tag < ApplicationRecord
+            has_many :taggings
+          end
+        RUBY
+      end
+
+      it 'traverses both the implicit through model and the target model' do
+        graph = builder.build('Post')
+        has_many_models = graph[:associations][:has_many].map { |n| n[:model] }
+        expect(has_many_models).to contain_exactly('Tagging', 'Tag')
+      end
+    end
+
+    context "with 'through' when through model is already declared explicitly" do
+      before do
+        create_model_file('post', <<~RUBY)
+          class Post < ApplicationRecord
+            has_many :taggings
+            has_many :tags, through: :taggings
+          end
+        RUBY
+        create_model_file('tagging', <<~RUBY)
+          class Tagging < ApplicationRecord
+            belongs_to :post
+            belongs_to :tag
+          end
+        RUBY
+        create_model_file('tag', <<~RUBY)
+          class Tag < ApplicationRecord
+            has_many :taggings
+          end
+        RUBY
+      end
+
+      it 'includes the through model only once without creating duplicate sibling nodes' do
+        graph = builder.build('Post')
+        has_many_models = graph[:associations][:has_many].map { |n| n[:model] }
+        expect(has_many_models).to eq(['Tagging', 'Tag'])
+      end
+    end
+
+    context "with 'through' when through model does not exist" do
+      before do
+        create_model_file('post', <<~RUBY)
+          class Post < ApplicationRecord
+            has_many :tags, through: :taggings
+          end
+        RUBY
+        create_model_file('tag', <<~RUBY)
+          class Tag < ApplicationRecord
+          end
+        RUBY
+      end
+
+      it 'gracefully includes only the reachable target model without crashing' do
+        graph = builder.build('Post')
+        has_many_models = graph[:associations][:has_many].map { |n| n[:model] }
+        expect(has_many_models).to contain_exactly('Tag')
+      end
+    end
+
     context "with 'through' and 'source' options" do
       before do
         create_model_file('post', <<~RUBY)
@@ -85,10 +160,35 @@ RSpec.describe GraphBuilder do
         RUBY
       end
 
-      it 'resolves the dependency using the source option' do
+      it 'resolves both through and source dependencies without duplicating Comment' do
         graph = builder.build('Post')
         has_many_models = graph[:associations][:has_many].map { |n| n[:model] }
-        expect(has_many_models).to include('User')
+        expect(has_many_models).to eq(['Comment', 'User'])
+      end
+    end
+
+    context 'with namespaced through and source associations' do
+      before do
+        FileUtils.mkdir_p(File.join(project_path, 'app', 'models', 'billing'))
+        create_model_file('billing/invoice', <<~RUBY)
+          class Billing::Invoice < ApplicationRecord
+            has_many :transactions, through: :payments, source: :record
+          end
+        RUBY
+        create_model_file('billing/payment', <<~RUBY)
+          class Billing::Payment < ApplicationRecord
+          end
+        RUBY
+        create_model_file('billing/record', <<~RUBY)
+          class Billing::Record < ApplicationRecord
+          end
+        RUBY
+      end
+
+      it 'resolves both namespaced through and source models' do
+        graph = builder.build('Billing::Invoice')
+        has_many_models = graph[:associations][:has_many].map { |n| n[:model] }
+        expect(has_many_models).to eq(['Billing::Payment', 'Billing::Record'])
       end
     end
 

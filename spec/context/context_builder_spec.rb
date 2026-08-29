@@ -295,6 +295,24 @@ RSpec.describe ContextBuilder do
         expect(related).not_to include('/fake/project/app/models/user.rb')
       end
 
+      it 'resolves the intermediate through model as a direct dependency when present' do
+        map = {
+          models: {
+            'Post' => {
+              path: '/fake/project/app/models/post.rb',
+              associations: {
+                has_many: [{ name: 'tags', through: 'taggings' }]
+              }
+            },
+            'Tagging' => { path: '/fake/project/app/models/tagging.rb', associations: {} },
+            'Tag' => { path: '/fake/project/app/models/tag.rb', associations: {} }
+          }
+        }
+        test_builder = described_class.new(map, '/fake/project')
+        related = test_builder.send(:related_models, map[:models]['Post'])
+        expect(related).to contain_exactly('/fake/project/app/models/tagging.rb')
+      end
+
       context 'with namespaced model resolving relative association' do
         let(:project_map) do
           {

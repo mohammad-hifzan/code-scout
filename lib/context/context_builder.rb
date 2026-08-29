@@ -62,19 +62,12 @@ class ContextBuilder
     return [] unless associations
 
     associations.values.flatten.filter_map do |assoc|
-      direct_assoc =
-        if assoc.is_a?(Hash) && assoc[:source]
-          assoc.reject { |k, _| k == :source }
-        else
-          assoc
-        end
+      resolved = @association_resolver.resolve(current_model_name, assoc)
+      direct_model_name = resolved[:through_model] || resolved[:target_model]
+      next unless direct_model_name
 
-      target_model_name = @association_resolver.target_model(current_model_name, direct_assoc)
-      next unless target_model_name
-
-      project_map[:models][target_model_name]
-        &.dig(:path)
-    end
+      project_map.dig(:models, direct_model_name, :path)
+    end.uniq
   end
 
   def primary_views(model_name)
