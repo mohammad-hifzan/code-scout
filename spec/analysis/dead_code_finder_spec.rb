@@ -171,5 +171,82 @@ RSpec.describe DeadCodeFinder do
         expect(result[:controllers]).to contain_exactly('UnusedController')
       end
     end
+
+    context 'with polymorphic associations (unmocked ModelUsageFinder)' do
+      before do
+        allow(ModelUsageFinder).to receive(:new).and_call_original
+        allow(inheritance_usage_finder).to receive(:used_classes).and_return([])
+      end
+
+      context 'when a model declares belongs_to polymorphic and an Imageable model exists' do
+        let(:project_map) do
+          {
+            models: {
+              'Picture' => {
+                path: '/fake/project/app/models/picture.rb',
+                associations: {
+                  belongs_to: [{ name: 'imageable', polymorphic: true }],
+                  has_many: [],
+                  has_one: []
+                }
+              },
+              'Imageable' => {
+                path: '/fake/project/app/models/imageable.rb',
+                associations: {
+                  belongs_to: [],
+                  has_many: [],
+                  has_one: []
+                }
+              }
+            },
+            controllers: {}
+          }
+        end
+
+        it 'does not treat Imageable as used merely because of the polymorphic interface' do
+          expect(subject.find[:models]).to include('Imageable')
+        end
+      end
+
+      context 'when a model declares has_many with as: option pointing to a polymorphic model' do
+        let(:project_map) do
+          {
+            models: {
+              'Post' => {
+                path: '/fake/project/app/models/post.rb',
+                associations: {
+                  has_many: [{ name: 'pictures', as: 'imageable' }],
+                  belongs_to: [],
+                  has_one: []
+                }
+              },
+              'Picture' => {
+                path: '/fake/project/app/models/picture.rb',
+                associations: {
+                  belongs_to: [{ name: 'imageable', polymorphic: true }],
+                  has_many: [],
+                  has_one: []
+                }
+              },
+              'UnusedOther' => {
+                path: '/fake/project/app/models/unused_other.rb',
+                associations: {
+                  belongs_to: [],
+                  has_many: [],
+                  has_one: []
+                }
+              }
+            },
+            controllers: {}
+          }
+        end
+
+        it 'considers Picture as used and not dead code' do
+          unused = subject.find[:models]
+          expect(unused).not_to include('Picture')
+          expect(unused).to include('UnusedOther')
+        end
+      end
+    end
   end
 end

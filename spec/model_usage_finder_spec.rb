@@ -192,5 +192,89 @@ RSpec.describe ModelUsageFinder do
         expect(finder.used_models).to contain_exactly('Admin::Profile')
       end
     end
+
+    context 'with polymorphic belongs_to association' do
+      let(:project_map) do
+        {
+          models: {
+            'Picture' => {
+              associations: {
+                belongs_to: [{ name: 'imageable', polymorphic: true }],
+                has_many: [],
+                has_one: []
+              }
+            },
+            'Imageable' => {
+              associations: {
+                belongs_to: [],
+                has_many: [],
+                has_one: []
+              }
+            }
+          }
+        }
+      end
+
+      it 'does not treat the polymorphic interface as a used model' do
+        expect(finder.used_models).to be_empty
+        expect(finder.used_models).not_to include('Imageable')
+      end
+    end
+
+    context 'with has_many using as: option' do
+      let(:project_map) do
+        {
+          models: {
+            'Post' => {
+              associations: {
+                has_many: [{ name: 'pictures', as: 'imageable' }],
+                belongs_to: [],
+                has_one: []
+              }
+            },
+            'Picture' => {
+              associations: {
+                belongs_to: [{ name: 'imageable', polymorphic: true }],
+                has_many: [],
+                has_one: []
+              }
+            }
+          }
+        }
+      end
+
+      it 'identifies the target model without including the polymorphic interface name' do
+        expect(finder.used_models).to contain_exactly('Picture')
+        expect(finder.used_models).not_to include('Imageable')
+      end
+    end
+
+    context 'with mixed polymorphic and concrete associations' do
+      let(:project_map) do
+        {
+          models: {
+            'Picture' => {
+              associations: {
+                belongs_to: [{ name: 'imageable', polymorphic: true }],
+                has_many: [{ name: 'posts' }],
+                has_one: []
+              }
+            },
+            'Post' => {
+              associations: {
+                belongs_to: [],
+                has_many: [],
+                has_one: []
+              }
+            }
+          }
+        }
+      end
+
+      it 'identifies concrete association targets while ignoring polymorphic belongs_to' do
+        expect(finder.used_models).to contain_exactly('Post')
+        expect(finder.used_models).not_to include('Imageable')
+      end
+    end
   end
 end
