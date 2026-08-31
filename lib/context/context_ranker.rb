@@ -10,7 +10,7 @@ class ContextRanker
     ranked = []
 
     SCORES.each do |category, score|
-      Array(context[category]).each do |path|
+      Array(context[category]).compact.each do |path|
         ranked << {
           path: path,
           category: category,

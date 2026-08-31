@@ -258,10 +258,85 @@ RSpec.describe ContextEngine do
           }
         end
 
-        it 'includes nil in the required array if the context part is missing' do
+        it 'omits nil from required files when controller is missing but rule is enabled' do
           allow(rule).to receive(:include_controller?).and_return(true)
           result = engine.build(entity, rule: rule)
-          expect(result[:required]).to contain_exactly(nil)
+          expect(result[:required]).to eq([])
+          expect(result[:required]).not_to include(nil)
+        end
+
+        it 'includes only available files in required when policy is present and controller is missing' do
+          allow(rule).to receive(:include_controller?).and_return(true)
+          allow(rule).to receive(:include_policy?).and_return(true)
+          result = engine.build(entity, rule: rule)
+          expect(result[:required]).to contain_exactly('user_policy.rb')
+          expect(result[:required]).not_to include(nil)
+        end
+
+        context 'when policy is missing and controller is present' do
+          let(:model_context) do
+            {
+              model: 'user.rb',
+              primary_controller: 'users_controller.rb',
+              primary_policy: nil,
+              related_models: [],
+              primary_views: nil
+            }
+          end
+
+          it 'includes only controller in required files' do
+            allow(rule).to receive(:include_controller?).and_return(true)
+            allow(rule).to receive(:include_policy?).and_return(true)
+            result = engine.build(entity, rule: rule)
+            expect(result[:required]).to contain_exactly('users_controller.rb')
+            expect(result[:required]).not_to include(nil)
+          end
+        end
+
+        context 'when both controller and policy are missing' do
+          let(:model_context) do
+            {
+              model: 'user.rb',
+              primary_controller: nil,
+              primary_policy: nil,
+              related_models: [],
+              primary_views: nil
+            }
+          end
+
+          it 'returns empty array for required files without any nil elements' do
+            allow(rule).to receive(:include_controller?).and_return(true)
+            allow(rule).to receive(:include_policy?).and_return(true)
+            result = engine.build(entity, rule: rule)
+            expect(result[:required]).to eq([])
+            expect(result[:required]).not_to include(nil)
+          end
+
+          it 'ensures no category contains nil when all rules are enabled' do
+            allow(ContextRanker).to receive(:new).and_call_original
+            allow(rule).to receive(:include_primary?).and_return(true)
+            allow(rule).to receive(:include_controller?).and_return(true)
+            allow(rule).to receive(:include_policy?).and_return(true)
+            allow(rule).to receive(:include_related_models?).and_return(true)
+            allow(rule).to receive(:include_views?).and_return(true)
+
+            result = engine.build(entity, rule: rule)
+
+            expect(result[:primary]).to contain_exactly('user.rb')
+            expect(result[:required]).to eq([])
+            expect(result[:related]).to eq([])
+            expect(result[:optional]).to eq([])
+
+            expect(result[:primary]).not_to include(nil)
+            expect(result[:required]).not_to include(nil)
+            expect(result[:related]).not_to include(nil)
+            expect(result[:optional]).not_to include(nil)
+
+            expect(result[:ranked].map { |entry| entry[:path] }).not_to include(nil)
+            expect(result[:ranked]).to contain_exactly(
+              { path: 'user.rb', category: :primary, score: 100 }
+            )
+          end
         end
       end
       

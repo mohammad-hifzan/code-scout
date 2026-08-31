@@ -94,12 +94,11 @@ RSpec.describe ContextRanker do
         }
       end
 
-      it 'includes nil paths in the ranked result' do
+      it 'omits nil paths from the ranked result' do
         ranked_result = ranker.rank(context)
-        expect(ranked_result.size).to eq(3)
-        expect(ranked_result).to include(
+        expect(ranked_result.size).to eq(2)
+        expect(ranked_result).to contain_exactly(
           { path: '/path/to/controller.rb', category: :required, score: 80 },
-          { path: nil, category: :required, score: 80 },
           { path: '/path/to/policy.rb', category: :required, score: 80 }
         )
       end

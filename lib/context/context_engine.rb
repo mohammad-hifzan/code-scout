@@ -25,22 +25,22 @@ class ContextEngine
 
     if rule.include_controller?
       result[:required] ||= []
-      result[:required] << context[:primary_controller]
+      result[:required] << context[:primary_controller] if context[:primary_controller]
     end
 
     if rule.include_policy?
       result[:required] ||= []
-      result[:required] << context[:primary_policy]
+      result[:required] << context[:primary_policy] if context[:primary_policy]
     end
 
     if rule.include_related_models?
       result[:related] =
-        context[:related_models]
+        Array(context[:related_models]).compact
     end
 
     if rule.include_views?
       result[:optional] =
-        context[:primary_views]
+        Array(context[:primary_views]).compact
     end
 
     result.merge(
