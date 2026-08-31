@@ -163,5 +163,60 @@ RSpec.describe ContextRanker do
       end
     end
 
+    context 'with duplicate paths across categories' do
+      it 'favors primary over related for the same file path' do
+        context = {
+          primary: ['/project/app/models/user.rb'],
+          related: ['/project/app/models/user.rb']
+        }
+
+        expect(ranker.rank(context)).to eq([
+          { path: '/project/app/models/user.rb', category: :primary, score: 100 }
+        ])
+      end
+
+      it 'favors required over related for the same file path' do
+        context = {
+          required: ['/project/app/models/user.rb'],
+          related: ['/project/app/models/user.rb']
+        }
+
+        expect(ranker.rank(context)).to eq([
+          { path: '/project/app/models/user.rb', category: :required, score: 80 }
+        ])
+      end
+
+      it 'favors primary when the same path appears in all four categories' do
+        context = {
+          primary: ['/project/app/models/user.rb'],
+          required: ['/project/app/models/user.rb'],
+          related: ['/project/app/models/user.rb'],
+          optional: ['/project/app/models/user.rb']
+        }
+
+        result = ranker.rank(context)
+        expect(result.size).to eq(1)
+        expect(result).to eq([
+          { path: '/project/app/models/user.rb', category: :primary, score: 100 }
+        ])
+      end
+
+      it 'preserves all distinct files while deduplicating shared ones' do
+        context = {
+          primary: ['/project/app/models/user.rb'],
+          required: ['/project/app/controllers/users_controller.rb'],
+          related: ['/project/app/models/user.rb', '/project/app/models/post.rb'],
+          optional: ['/project/app/views/users/index.html.erb', '/project/app/models/post.rb']
+        }
+
+        result = ranker.rank(context)
+        expect(result).to eq([
+          { path: '/project/app/models/user.rb', category: :primary, score: 100 },
+          { path: '/project/app/controllers/users_controller.rb', category: :required, score: 80 },
+          { path: '/project/app/models/post.rb', category: :related, score: 60 },
+          { path: '/project/app/views/users/index.html.erb', category: :optional, score: 30 }
+        ])
+      end
+    end
   end
 end

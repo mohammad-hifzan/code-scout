@@ -1,3 +1,5 @@
+require "set"
+
 class ContextRanker
   SCORES = {
     primary: 100,
@@ -8,9 +10,14 @@ class ContextRanker
 
   def rank(context)
     ranked = []
+    seen = Set.new
 
     SCORES.each do |category, score|
       Array(context[category]).compact.each do |path|
+        next if seen.include?(path)
+
+        seen << path
+
         ranked << {
           path: path,
           category: category,
