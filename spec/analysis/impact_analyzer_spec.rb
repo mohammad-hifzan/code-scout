@@ -207,6 +207,69 @@ RSpec.describe ImpactAnalyzer do
         end
       end
 
+      context 'with a through association' do
+        it 'scores through join model as direct (3 points) and target model as indirect (1 point)' do
+          context = {
+            related_models: ['/fake/project/app/models/tagging.rb'],
+            primary_controller: nil,
+            primary_policy: nil
+          }
+          tag_node = { model: 'Tag', associations: { belongs_to: [], has_many: [], has_one: [] } }
+          tagging_node = { model: 'Tagging', associations: { belongs_to: [tag_node], has_many: [], has_one: [] } }
+          post_node = {
+            model: 'Post',
+            associations: {
+              belongs_to: [],
+              has_many: [tagging_node, tag_node],
+              has_one: []
+            }
+          }
+
+          allow(context_builder).to receive(:build).with('Post').and_return(context)
+          allow(graph_builder).to receive(:build).with('Post').and_return(post_node)
+
+          result = analyzer.analyze('Post')
+
+          expect(result[:target]).to eq('Post')
+          expect(result[:direct_impact][:models]).to eq(['Tagging'])
+          expect(result[:indirect_impact][:models]).to eq(['Tag'])
+          # Score: Tagging (direct * 3) + Tag (indirect * 1) = 4
+          expect(result[:score]).to eq(4)
+          expect(result[:risk_level]).to eq(:low)
+        end
+      end
+
+      context 'with a polymorphic belongs_to association' do
+        it 'does not produce phantom impact for the polymorphic interface name' do
+          context = {
+            related_models: [],
+            primary_controller: nil,
+            primary_policy: nil
+          }
+          picture_node = {
+            model: 'Picture',
+            associations: {
+              belongs_to: [],
+              has_many: [],
+              has_one: []
+            }
+          }
+
+          allow(context_builder).to receive(:build).with('Picture').and_return(context)
+          allow(graph_builder).to receive(:build).with('Picture').and_return(picture_node)
+
+          result = analyzer.analyze('Picture')
+
+          expect(result[:target]).to eq('Picture')
+          expect(result[:direct_impact][:models]).to be_empty
+          expect(result[:indirect_impact][:models]).to be_empty
+          expect(result[:direct_impact][:models]).not_to include('Imageable')
+          expect(result[:indirect_impact][:models]).not_to include('Imageable')
+          expect(result[:score]).to eq(0)
+          expect(result[:risk_level]).to eq(:low)
+        end
+      end
+
       describe 'risk level calculation' do
         it 'returns :low for scores 0-5' do
           expect(analyzer.risk_level(0)).to eq(:low)
