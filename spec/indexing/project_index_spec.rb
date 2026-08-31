@@ -3,6 +3,7 @@ require 'fileutils'
 require 'tmpdir'
 
 require_relative '../../lib/indexing/project_index'
+require_relative '../../lib/indexing/project_mapper'
 require_relative '../../lib/analysis/model_analyzer'
 require_relative '../../lib/analysis/controller_analyzer'
 require_relative '../../lib/analysis/view_analyzer'
@@ -187,6 +188,93 @@ RSpec.describe ProjectIndex do
         project_index.view(non_existent_path)
         expect(view_analyzer).not_to have_received(:analyze)
       end
+    end
+  end
+
+  describe 'real analyzer pipeline integration (unmocked)' do
+    let!(:tmp_project_path) { Dir.mktmpdir }
+    after { FileUtils.remove_entry(tmp_project_path) }
+
+    before do
+      allow(ModelAnalyzer).to receive(:new).and_call_original
+      allow(ControllerAnalyzer).to receive(:new).and_call_original
+      allow(ViewAnalyzer).to receive(:new).and_call_original
+      allow(ContextBuilder).to receive(:new).and_call_original
+      allow(DependencyAnalyzer).to receive(:new).and_call_original
+      allow(ImpactAnalyzer).to receive(:new).and_call_original
+    end
+
+    def create_model_file(name, content)
+      full_path = File.join(tmp_project_path, 'app', 'models', "#{name}.rb")
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
+    def create_controller_file(name, content)
+      full_path = File.join(tmp_project_path, 'app', 'controllers', "#{name}.rb")
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
+    let(:real_project_map) { ProjectMapper.new(tmp_project_path).map }
+    let(:unmocked_index) { described_class.new(real_project_map, tmp_project_path) }
+
+    before do
+      create_model_file(
+        'user',
+        <<~RUBY
+          class User < ApplicationRecord
+            has_many :posts
+          end
+        RUBY
+      )
+      create_model_file(
+        'post',
+        <<~RUBY
+          class Post < ApplicationRecord
+            belongs_to :user
+          end
+        RUBY
+      )
+      create_controller_file(
+        'users_controller',
+        <<~RUBY
+          class UsersController < ApplicationController
+          end
+        RUBY
+      )
+    end
+
+    it 'produces a consistent composite model result across real ProjectMapper and all analyzers' do
+      result = unmocked_index.model('User')
+
+      expect(result).to include(
+        :analyzer,
+        :context,
+        :dependency,
+        :impact
+      )
+
+      expect(result[:analyzer][:model]).to eq('User')
+      expect(result[:analyzer][:associations][:has_many]).to contain_exactly({ name: 'posts' })
+
+      expect(result[:context][:model]).to eq(File.join(tmp_project_path, 'app', 'models', 'user.rb'))
+      expect(result[:context][:related_models]).to contain_exactly(File.join(tmp_project_path, 'app', 'models', 'post.rb'))
+      expect(result[:context][:primary_controller]).to eq(File.join(tmp_project_path, 'app', 'controllers', 'users_controller.rb'))
+
+      expect(result[:dependency][:target]).to eq('User')
+      expect(result[:dependency][:direct_dependencies][:models]).to include('Post')
+      expect(result[:dependency][:direct_dependencies][:controllers]).to include('UsersController')
+
+      expect(result[:impact][:target]).to eq('User')
+      expect(result[:impact][:direct_impact][:models]).to include('Post')
+      expect(result[:impact][:direct_impact][:controllers]).to contain_exactly(File.join(tmp_project_path, 'app', 'controllers', 'users_controller.rb'))
+    end
+
+    it 'returns nil for non-existent model in real project map' do
+      expect(unmocked_index.model('NonExistent')).to be_nil
     end
   end
 end
