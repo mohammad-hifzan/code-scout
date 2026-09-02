@@ -1,4 +1,13 @@
 require_relative '../nlp/request_analyzer'
+require_relative '../nlp/rule_selector'
+require_relative '../indexing/project_mapper'
+require_relative '../indexing/project_index'
+require_relative '../context/context_engine'
+require_relative '../context/token_estimator'
+require_relative '../context/context_pruner'
+require_relative '../context/file_loader'
+require_relative '../prompts/prompt_builder'
+
 module Pipeline
   class Pipeline
     def initialize(project_path)
@@ -6,17 +15,22 @@ module Pipeline
     end
 
     def run(request)
-      analysis = RequestAnalyzer.new.analyze(request)
+      project_map =
+        ProjectMapper
+          .new(@project_path)
+          .map
+
+      models = project_map[:models]&.keys || []
+
+      analysis =
+        RequestAnalyzer
+          .new(models: models)
+          .analyze(request)
 
       rule =
         RuleSelector.new.select(
           analysis[:action]
         )
-
-      project_map =
-        ProjectMapper
-          .new(@project_path)
-          .map
 
       index =
         ProjectIndex.new(
@@ -31,6 +45,8 @@ module Pipeline
             analysis[:entity],
             rule: rule
           )
+
+      return unless context
 
       ranked =
         context[:ranked]

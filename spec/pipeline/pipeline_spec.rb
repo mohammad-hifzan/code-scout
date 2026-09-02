@@ -148,4 +148,92 @@ RSpec.describe Pipeline::Pipeline do
 
     expect(result).to eq(prompt)
   end
+
+  it "fails closed and returns nil when entity cannot be resolved" do
+    analyzer = instance_double(RequestAnalyzer)
+    selector = instance_double(RuleSelector)
+    mapper = instance_double(ProjectMapper)
+    engine = instance_double(ContextEngine)
+
+    allow(RequestAnalyzer).to receive(:new).and_return(analyzer)
+    allow(RuleSelector).to receive(:new).and_return(selector)
+    allow(ProjectMapper).to receive(:new).with(project_path).and_return(mapper)
+    allow(ProjectIndex).to receive(:new).and_return(project_index)
+    allow(ContextEngine).to receive(:new).and_return(engine)
+
+    expect(mapper).to receive(:map).and_return(project_map)
+    expect(analyzer).to receive(:analyze).with(request).and_return({ action: :edit, entity: nil })
+    expect(selector).to receive(:select).with(:edit).and_return(rule)
+    expect(engine).to receive(:build).with(nil, rule: rule).and_return(nil)
+
+    result = described_class.new(project_path).run(request)
+    expect(result).to be_nil
+  end
+
+  describe "end-to-end unmocked integration" do
+    let!(:tmp_project_path) { Dir.mktmpdir }
+    after { FileUtils.remove_entry(tmp_project_path) }
+
+    def create_model_file(name, content)
+      full_path = File.join(tmp_project_path, "app", "models", "#{name}.rb")
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
+    def create_controller_file(name, content)
+      full_path = File.join(tmp_project_path, "app", "controllers", "#{name}.rb")
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
+    before do
+      create_model_file(
+        "user",
+        <<~RUBY
+          class User < ApplicationRecord
+            has_many :posts
+          end
+        RUBY
+      )
+      create_model_file(
+        "post",
+        <<~RUBY
+          class Post < ApplicationRecord
+            belongs_to :user
+          end
+        RUBY
+      )
+      create_controller_file(
+        "users_controller",
+        <<~RUBY
+          class UsersController < ApplicationController
+          end
+        RUBY
+      )
+    end
+
+    it "resolves natural-language request to real User model without phantom Add model" do
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Add a validation to User.")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to include("class User < ApplicationRecord")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/controllers/users_controller.rb")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Add a validation to User.")
+      expect(prompt).not_to include("Add.rb")
+    end
+
+    it "fails closed when request references an unknown model" do
+      pipeline = described_class.new(tmp_project_path)
+      result = pipeline.run("Add a validation to UnknownModel.")
+
+      expect(result).to be_nil
+    end
+  end
 end

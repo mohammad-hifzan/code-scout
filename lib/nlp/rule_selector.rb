@@ -1,3 +1,8 @@
+require_relative '../context_rules/base_rule'
+require_relative '../context_rules/edit_model_rule'
+require_relative '../context_rules/debug_rule'
+require_relative '../context_rules/explain_rule'
+
 class RuleSelector
   def select(action)
     case action
