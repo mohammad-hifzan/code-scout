@@ -72,6 +72,14 @@ class RequestAnalyzer
     ]
   }.freeze
 
+  ARTIFACT_SUFFIXES = %w[
+    serializer
+    policy
+    job
+    mailer
+    service
+  ].freeze
+
   def initialize(models: [])
     @models = models || []
   end
@@ -109,12 +117,41 @@ class RequestAnalyzer
     lookup = build_model_lookup(models)
     tokens = request.scan(/[A-Za-z0-9_:]+(?:'s|')?/i)
 
+    # 1. Direct model name resolution
     tokens.each do |token|
       clean_token = token.sub(/'s\z/i, "").sub(/'\z/, "")
       downcased = clean_token.downcase
 
       matched = lookup[downcased] || lookup[singularize(downcased)]
       return matched if matched
+    end
+
+    # 2. Rails compound artifact resolution (e.g. UserSerializer -> User)
+    tokens.each do |token|
+      clean_token = token.sub(/'s\z/i, "").sub(/'\z/, "")
+      matched = resolve_compound_entity(clean_token, lookup)
+      return matched if matched
+    end
+
+    nil
+  end
+
+  def resolve_compound_entity(token, lookup)
+    downcased = token.downcase
+
+    ARTIFACT_SUFFIXES.each do |suffix|
+      if downcased.end_with?(suffix) && downcased.length > suffix.length
+        base = downcased[0...-suffix.length].sub(/_\z/, "")
+        matched = lookup[base] || lookup[singularize(base)]
+        return matched if matched
+      end
+
+      singular = singularize(downcased)
+      if singular != downcased && singular.end_with?(suffix) && singular.length > suffix.length
+        base = singular[0...-suffix.length].sub(/_\z/, "")
+        matched = lookup[base] || lookup[singularize(base)]
+        return matched if matched
+      end
     end
 
     nil

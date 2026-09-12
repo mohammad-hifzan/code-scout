@@ -275,6 +275,28 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("PostSerializer")
     end
 
+    it "resolves compound artifact constant in pipeline end-to-end" do
+      create_serializer_file(
+        "user_serializer",
+        <<~RUBY
+          class UserSerializer < ActiveModel::Serializer
+            attributes :id, :email
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Change UserSerializer")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/serializers/user_serializer.rb")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Change UserSerializer")
+    end
+
     it "does not include serializers when the topic is :validation" do
       create_serializer_file(
         "user_serializer",
@@ -287,7 +309,7 @@ RSpec.describe Pipeline::Pipeline do
       pipeline = described_class.new(tmp_project_path)
       prompt = pipeline.run("Add a validation to User.")
 
-expect(prompt).not_to include("app/serializers/user_serializer.rb")
+      expect(prompt).not_to include("app/serializers/user_serializer.rb")
     end
 
     it "does not include serializers when the request is generic even if serializer exists on disk" do

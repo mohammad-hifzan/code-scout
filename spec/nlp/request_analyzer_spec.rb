@@ -247,7 +247,7 @@ RSpec.describe RequestAnalyzer do
       expect(analyzer.analyze("Some generic request")[:topic]).to eq(:general)
     end
 
-describe "adversarial scenario matrix" do
+    describe "adversarial scenario matrix" do
       it "evaluates validation scenarios accurately" do
         expect(analyzer.analyze("Add a validation to User")).to eq(action: :edit, entity: "User", topic: :validation)
         expect(analyzer.analyze("Why is User validation failing?")).to eq(action: :debug, entity: "User", topic: :validation)
@@ -257,7 +257,7 @@ describe "adversarial scenario matrix" do
       it "evaluates serialization scenarios accurately" do
         expect(analyzer.analyze("Change how User is serialized")).to eq(action: :edit, entity: "User", topic: :serialization)
         expect(analyzer.analyze("Add email to User JSON response")).to eq(action: :edit, entity: "User", topic: :serialization)
-        expect(analyzer.analyze("Why is UserSerializer not showing email?")).to eq(action: :explain, entity: nil, topic: :serialization)
+        expect(analyzer.analyze("Why is UserSerializer not showing email?")).to eq(action: :explain, entity: "User", topic: :serialization)
         expect(analyzer.analyze("Change the JSON representation of User")).to eq(action: :edit, entity: "User", topic: :serialization)
       end
 
@@ -270,18 +270,18 @@ describe "adversarial scenario matrix" do
       it "evaluates policy scenarios accurately" do
         expect(analyzer.analyze("Change authorization for User")).to eq(action: :edit, entity: "User", topic: :policy)
         expect(analyzer.analyze("Why can this user not access User?")).to eq(action: :explain, entity: "User", topic: :general)
-        expect(analyzer.analyze("Update UserPolicy")).to eq(action: :edit, entity: nil, topic: :policy)
+        expect(analyzer.analyze("Update UserPolicy")).to eq(action: :edit, entity: "User", topic: :policy)
         expect(analyzer.analyze("Update authorization policy for User")).to eq(action: :edit, entity: "User", topic: :policy)
       end
 
       it "evaluates job classification accurately" do
-        expect(analyzer.analyze("Change UserJob")).to eq(action: :edit, entity: nil, topic: :job)
+        expect(analyzer.analyze("Change UserJob")).to eq(action: :edit, entity: "User", topic: :job)
         expect(analyzer.analyze("Why is the User job failing?")).to eq(action: :debug, entity: "User", topic: :job)
         expect(analyzer.analyze("Update the background job for User")).to eq(action: :edit, entity: "User", topic: :job)
       end
 
       it "evaluates mailer classification and avoids false positives" do
-        expect(analyzer.analyze("Change UserMailer")).to eq(action: :edit, entity: nil, topic: :mailer)
+        expect(analyzer.analyze("Change UserMailer")).to eq(action: :edit, entity: "User", topic: :mailer)
         expect(analyzer.analyze("Why isn't the User email being sent?")).to eq(action: :explain, entity: "User", topic: :general)
         expect(analyzer.analyze("Update the welcome email for User")).to eq(action: :edit, entity: "User", topic: :general)
         expect(analyzer.analyze("Change notification preferences for User")).to eq(action: :edit, entity: "User", topic: :general)
@@ -289,7 +289,7 @@ describe "adversarial scenario matrix" do
       end
 
       it "evaluates service classification and avoids false positives" do
-        expect(analyzer.analyze("Change UserService")).to eq(action: :edit, entity: nil, topic: :service)
+        expect(analyzer.analyze("Change UserService")).to eq(action: :edit, entity: "User", topic: :service)
         expect(analyzer.analyze("Why is the User service failing?")).to eq(action: :debug, entity: "User", topic: :service)
         expect(analyzer.analyze("Move this User operation into a service")).to eq(action: :edit, entity: "User", topic: :service)
         expect(analyzer.analyze("Update User creator")).to eq(action: :edit, entity: "User", topic: :general)
@@ -315,6 +315,108 @@ describe "adversarial scenario matrix" do
       it "isolates single dominant topic when non-colliding prose is present" do
         expect(analyzer.analyze("Fix the User service that sends email")[:topic]).to eq(:service)
         expect(analyzer.analyze("Change notification preferences for User")[:topic]).to eq(:general)
+      end
+    end
+
+    describe "compound entity resolution" do
+      it "resolves UserSerializer to User" do
+        expect(analyzer.analyze("Change UserSerializer")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :serialization
+        )
+      end
+
+      it "resolves UserPolicy to User" do
+        expect(analyzer.analyze("Update UserPolicy")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :policy
+        )
+      end
+
+      it "resolves UserJob to User" do
+        expect(analyzer.analyze("Change UserJob")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :job
+        )
+      end
+
+      it "resolves UserMailer to User" do
+        expect(analyzer.analyze("Change UserMailer")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :mailer
+        )
+      end
+
+      it "resolves UserService to User" do
+        expect(analyzer.analyze("Change UserService")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :service
+        )
+      end
+
+      it "resolves namespaced compound artifact constants" do
+        scoped_analyzer = described_class.new(models: ["Admin::User", "Billing::Invoice"])
+        expect(scoped_analyzer.analyze("Change Admin::UserSerializer")).to eq(
+          action: :edit,
+          entity: "Admin::User",
+          topic: :serialization
+        )
+        expect(scoped_analyzer.analyze("Update Billing::InvoicePolicy")).to eq(
+          action: :edit,
+          entity: "Billing::Invoice",
+          topic: :policy
+        )
+      end
+
+      it "preserves standard entity resolution for base models" do
+        expect(analyzer.analyze("Change User")[:entity]).to eq("User")
+        expect(analyzer.analyze("Add validation to User")[:entity]).to eq("User")
+        expect(analyzer.analyze("Explain Shop")[:entity]).to eq("Shop")
+        expect(analyzer.analyze("Change Billing::Invoice")[:entity]).to eq("Billing::Invoice")
+      end
+
+      it "fails closed when compound artifact references an unknown base entity" do
+        expect(analyzer.analyze("Change SomeRandomSerializer")).to eq(
+          action: :edit,
+          entity: nil,
+          topic: :serialization
+        )
+        expect(analyzer.analyze("Update SomeRandomPolicy")).to eq(
+          action: :edit,
+          entity: nil,
+          topic: :policy
+        )
+      end
+
+      it "does not treat arbitrary words as artifact constants" do
+        expect(analyzer.analyze("Update User creator")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :general
+        )
+        expect(analyzer.analyze("Change notification preferences for User")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :general
+        )
+        expect(analyzer.analyze("Change email validation for User")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :validation
+        )
+      end
+
+      it "handles multiple compound artifacts without guessing" do
+        expect(analyzer.analyze("Change UserSerializer and UserPolicy")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :general
+        )
       end
     end
 
