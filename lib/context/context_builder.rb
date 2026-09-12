@@ -1,5 +1,6 @@
 require "active_support/inflector"
 require_relative "../analysis/association_resolver"
+require_relative "../reference_categorizer"
 
 class ContextBuilder
   def initialize(project_map, project_path)
@@ -8,11 +9,13 @@ class ContextBuilder
     @association_resolver = AssociationResolver.new(project_map)
   end
 
-  def build(model_name)
+  def build(model_name, references: nil)
     model =
       project_map.dig(:models, model_name)
 
     return nil unless model
+
+    ref_categories = extract_reference_categories(references)
 
     {
       model: model[:path],
@@ -30,13 +33,13 @@ class ContextBuilder
         primary_views(model_name),
 
       serializers:
-        serializers(model, model_name),
+        serializers(model, model_name, ref_categories[:serializers]),
 
       json_views:
         json_views(model_name),
 
       presenters:
-        presenters(model_name)
+        presenters(model_name, ref_categories[:presenters])
     }
   end
 
@@ -79,6 +82,16 @@ class ContextBuilder
     end.uniq
   end
 
+  def extract_reference_categories(references)
+    return {} if references.nil?
+
+    if references.is_a?(Hash)
+      references
+    else
+      ReferenceCategorizer.new.categorize(references)
+    end
+  end
+
   def primary_views(model_name)
     # Converts a model name like 'User' to 'users' or 'Admin::User' to 'admin/users'.
     # This is the conventional directory name for views related to a model.
@@ -91,7 +104,7 @@ class ContextBuilder
     Dir.glob(path_pattern)
   end
 
-  def serializers(model, model_name)
+  def serializers(model, model_name, ref_serializers = nil)
     files = []
 
     # 1. Primary serializer (e.g. app/serializers/user_serializer.rb)
@@ -110,6 +123,9 @@ class ContextBuilder
       end
     end
 
+    # 3. Reference-derived serializers
+    files.concat(ref_serializers) if ref_serializers
+
     files.uniq
   end
 
@@ -119,8 +135,10 @@ class ContextBuilder
     Dir.glob(jbuilder_pattern)
   end
 
-  def presenters(model_name)
+  def presenters(model_name, ref_presenters = nil)
     presenter_file = File.join(project_path, "app/presenters/#{model_name.underscore}_presenter.rb")
-    File.exist?(presenter_file) ? [presenter_file] : []
+    files = File.exist?(presenter_file) ? [presenter_file] : []
+    files.concat(ref_presenters) if ref_presenters
+    files.uniq
   end
 end

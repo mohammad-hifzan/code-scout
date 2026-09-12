@@ -406,6 +406,32 @@ RSpec.describe ContextEngine do
           expect(result[:required]).not_to include('user_presenter.rb')
         end
 
+        it 'elevates reference-expanded serializers into required while keeping unrelated reference categories out' do
+          allow(rule).to receive(:include_primary?).and_return(true)
+          allow(rule).to receive(:include_controller?).and_return(true)
+
+          extended_context = model_context.merge(
+            serializers: ['user_serializer.rb', 'user_summary_serializer.rb'],
+            services: ['user_registration_service.rb'],
+            jobs: ['user_export_job.rb'],
+            mailers: ['user_welcome_mailer.rb']
+          )
+          allow(project_index).to receive(:model).with(entity).and_return({ context: extended_context })
+
+          result = engine.build(entity, rule: rule, topic: :serialization)
+
+          expect(result[:required]).to contain_exactly(
+            'users_controller.rb',
+            'user_serializer.rb',
+            'user_summary_serializer.rb',
+            'users/show.json.jbuilder'
+          )
+          expect(result[:required]).not_to include('user_registration_service.rb')
+          expect(result[:required]).not_to include('user_export_job.rb')
+          expect(result[:required]).not_to include('user_welcome_mailer.rb')
+          expect(result[:required]).not_to include('user_presenter.rb')
+        end
+
         it 'fails safely and preserves general behavior for unmapped/unknown topics' do
           allow(rule).to receive(:include_primary?).and_return(true)
           allow(rule).to receive(:include_controller?).and_return(true)

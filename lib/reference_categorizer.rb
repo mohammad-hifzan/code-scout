@@ -15,6 +15,8 @@ class ReferenceCategorizer
       jobs: [],
       mailers: [],
       concerns: [],
+      serializers: [],
+      presenters: [],
       others: []
     }
 
@@ -41,6 +43,10 @@ class ReferenceCategorizer
         result[:jobs] << file
       when %r{/app/mailers/}
         result[:mailers] << file
+      when %r{/app/serializers/}
+        result[:serializers] << file
+      when %r{/app/presenters/}
+        result[:presenters] << file
       else
         result[:others] << file
       end

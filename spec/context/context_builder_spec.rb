@@ -238,6 +238,53 @@ RSpec.describe ContextBuilder do
           expect(context[:json_views]).to be_empty
           expect(context[:presenters]).to be_empty
         end
+
+        context 'with reference-derived candidate expansion' do
+          let(:summary_serializer_path) { '/fake/project/app/serializers/api/v2/user_summary_serializer.rb' }
+          let(:card_presenter_path) { '/fake/project/app/presenters/user_card_presenter.rb' }
+
+          it 'expands serializers with non-conventional reference candidates and deduplicates' do
+            references = [
+              summary_serializer_path,
+              user_serializer_path # duplicate of conventional
+            ]
+
+            context = builder.build('User', references: references)
+            expect(context[:serializers]).to contain_exactly(
+              user_serializer_path,
+              post_serializer_path,
+              summary_serializer_path
+            )
+          end
+
+          it 'expands presenters with reference candidates' do
+            references = [card_presenter_path]
+
+            context = builder.build('User', references: references)
+            expect(context[:presenters]).to contain_exactly(
+              user_presenter_path,
+              card_presenter_path
+            )
+          end
+
+          it 'accepts pre-categorized references hash' do
+            references = {
+              serializers: [summary_serializer_path],
+              presenters: [card_presenter_path]
+            }
+
+            context = builder.build('User', references: references)
+            expect(context[:serializers]).to contain_exactly(
+              user_serializer_path,
+              post_serializer_path,
+              summary_serializer_path
+            )
+            expect(context[:presenters]).to contain_exactly(
+              user_presenter_path,
+              card_presenter_path
+            )
+          end
+        end
       end
     end
   end

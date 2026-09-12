@@ -8,7 +8,8 @@ RSpec.describe ReferenceCategorizer do
     let(:empty_result) do
       {
         models: [], controllers: [], views: [], helpers: [], policies: [],
-        services: [], jobs: [], mailers: [], concerns: [], others: []
+        services: [], jobs: [], mailers: [], concerns: [], serializers: [],
+        presenters: [], others: []
       }
     end
 
@@ -30,6 +31,8 @@ RSpec.describe ReferenceCategorizer do
         '/app/jobs/user_job.rb',
         '/app/mailers/user_mailer.rb',
         '/app/helpers/user_helper.rb',
+        '/app/serializers/user_serializer.rb',
+        '/app/presenters/user_presenter.rb',
         '/db/schema.rb' # other
       ]
 
@@ -43,7 +46,25 @@ RSpec.describe ReferenceCategorizer do
       expect(result[:jobs]).to contain_exactly('/app/jobs/user_job.rb')
       expect(result[:mailers]).to contain_exactly('/app/mailers/user_mailer.rb')
       expect(result[:helpers]).to contain_exactly('/app/helpers/user_helper.rb')
+      expect(result[:serializers]).to contain_exactly('/app/serializers/user_serializer.rb')
+      expect(result[:presenters]).to contain_exactly('/app/presenters/user_presenter.rb')
       expect(result[:others]).to contain_exactly('/db/schema.rb')
+    end
+
+    it 'categorizes serializers correctly' do
+      files = ['/app/serializers/api/v2/user_summary_serializer.rb']
+      result = categorizer.categorize(files)
+
+      expect(result[:serializers]).to contain_exactly('/app/serializers/api/v2/user_summary_serializer.rb')
+      expect(result[:others]).to be_empty
+    end
+
+    it 'categorizes presenters correctly' do
+      files = ['/app/presenters/user_card_presenter.rb']
+      result = categorizer.categorize(files)
+
+      expect(result[:presenters]).to contain_exactly('/app/presenters/user_card_presenter.rb')
+      expect(result[:others]).to be_empty
     end
 
     it 'categorizes model concerns correctly, not as models' do
