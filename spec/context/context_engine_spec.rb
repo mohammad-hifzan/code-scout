@@ -405,6 +405,23 @@ RSpec.describe ContextEngine do
           expect(result[:required]).not_to include('user_mailer.rb')
           expect(result[:required]).not_to include('user_presenter.rb')
         end
+
+        it 'fails safely and preserves general behavior for unmapped/unknown topics' do
+          allow(rule).to receive(:include_primary?).and_return(true)
+          allow(rule).to receive(:include_controller?).and_return(true)
+
+          result = engine.build(entity, rule: rule, topic: :unmapped_topic)
+          expect(result[:required]).to contain_exactly('users_controller.rb')
+          expect(result[:required]).not_to include('user_serializer.rb')
+        end
+
+        it 'handles nil topic safely' do
+          allow(rule).to receive(:include_primary?).and_return(true)
+          allow(rule).to receive(:include_controller?).and_return(true)
+
+          result = engine.build(entity, rule: rule, topic: nil)
+          expect(result[:required]).to contain_exactly('users_controller.rb')
+        end
       end
     end
   end

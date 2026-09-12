@@ -3,6 +3,10 @@ require_relative "../indexing/project_index"
 require_relative "context_ranker"
 
 class ContextEngine
+  TOPIC_REQUIRED_CATEGORIES = {
+    serialization: %i[serializers json_views]
+  }.freeze
+
   def initialize(project_index)
     @project_index = project_index
   end
@@ -33,10 +37,10 @@ class ContextEngine
       result[:required] << context[:primary_policy] if context[:primary_policy]
     end
 
-    if topic == :serialization
+    topic_files = topic_required_files(context, topic)
+    if topic_files.any?
       result[:required] ||= []
-      result[:required].concat(Array(context[:serializers]).compact)
-      result[:required].concat(Array(context[:json_views]).compact)
+      result[:required].concat(topic_files)
       result[:required].uniq!
     end
 
@@ -56,6 +60,13 @@ class ContextEngine
   end
 
   private
+
+  def topic_required_files(context, topic)
+    return [] unless topic && context
+
+    categories = TOPIC_REQUIRED_CATEGORIES.fetch(topic.to_sym, [])
+    categories.flat_map { |category| Array(context[category]).compact }
+  end
 
   def primary_files(context)
     [
