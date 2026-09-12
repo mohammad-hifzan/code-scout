@@ -4,7 +4,8 @@ require_relative "context_ranker"
 
 class ContextEngine
   TOPIC_REQUIRED_CATEGORIES = {
-    serialization: %i[serializers json_views]
+    serialization: %i[serializers json_views],
+    policy: %i[primary_policy]
   }.freeze
 
   def initialize(project_index)

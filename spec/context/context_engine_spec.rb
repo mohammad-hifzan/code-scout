@@ -3,6 +3,10 @@ require 'spec_helper'
 require_relative '../../lib/context/context_engine'
 require_relative '../../lib/indexing/project_index'
 require_relative '../../lib/context/context_ranker'
+require_relative '../../lib/context_rules/base_rule'
+require_relative '../../lib/context_rules/edit_model_rule'
+require_relative '../../lib/context_rules/debug_rule'
+require_relative '../../lib/context_rules/explain_rule'
 
 RSpec.describe ContextEngine do
   subject(:engine) { described_class.new(project_index) }
@@ -441,7 +445,7 @@ RSpec.describe ContextEngine do
           expect(result[:required]).not_to include('user_serializer.rb')
         end
 
-it 'ensures general topic does not receive serialization candidates even when present in context' do
+        it 'ensures general topic does not receive serialization candidates even when present in context' do
           allow(rule).to receive(:include_primary?).and_return(true)
           allow(rule).to receive(:include_controller?).and_return(true)
           allow(rule).to receive(:include_policy?).and_return(true)
@@ -463,6 +467,41 @@ it 'ensures general topic does not receive serialization candidates even when pr
 
           result = engine.build(entity, rule: rule, topic: nil)
           expect(result[:required]).to contain_exactly('users_controller.rb')
+        end
+
+        context 'with policy topic selection' do
+          let(:edit_rule) { ContextRules::EditModelRule.new }
+          let(:debug_rule) { ContextRules::DebugRule.new }
+          let(:explain_rule) { ContextRules::ExplainRule.new }
+
+          it 'elevates primary_policy to required for edit action with policy topic' do
+            result = engine.build(entity, rule: edit_rule, topic: :policy)
+            expect(result[:required]).to include('user_policy.rb')
+          end
+
+          it 'elevates primary_policy to required for debug action with policy topic' do
+            result = engine.build(entity, rule: debug_rule, topic: :policy)
+            expect(result[:required]).to include('user_policy.rb')
+          end
+
+          it 'elevates primary_policy to required for explain action with policy topic even though explain rule disables policy' do
+            result = engine.build(entity, rule: explain_rule, topic: :policy)
+            expect(result[:required]).to contain_exactly('users_controller.rb', 'user_policy.rb')
+          end
+
+          it 'omits primary_policy for explain action when topic is :general' do
+            result = engine.build(entity, rule: explain_rule, topic: :general)
+            expect(result[:required]).to contain_exactly('users_controller.rb')
+            expect(result[:required]).not_to include('user_policy.rb')
+          end
+
+          it 'does not elevate policy for nil or unknown topic with explain rule' do
+            result_nil = engine.build(entity, rule: explain_rule, topic: nil)
+            result_unknown = engine.build(entity, rule: explain_rule, topic: :unknown_topic)
+
+            expect(result_nil[:required]).to contain_exactly('users_controller.rb')
+            expect(result_unknown[:required]).to contain_exactly('users_controller.rb')
+          end
         end
       end
     end

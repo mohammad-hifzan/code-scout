@@ -195,6 +195,13 @@ RSpec.describe Pipeline::Pipeline do
       full_path
     end
 
+    def create_policy_file(name, content)
+      full_path = File.join(tmp_project_path, "app", "policies", "#{name}.rb")
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
     before do
       create_model_file(
         "user",
@@ -350,6 +357,32 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("## REQUIRED")
       expect(prompt).to include("app/serializers/user_serializer.rb")
       expect(prompt).not_to include("x" * 20_000)
+    end
+
+    it "elevates UserPolicy into required context for policy explain request" do
+      create_policy_file(
+        "user_policy",
+        <<~RUBY
+          class UserPolicy < ApplicationPolicy
+            def show?
+              user.admin?
+            end
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Explain User authorization")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/controllers/users_controller.rb")
+      expect(prompt).to include("app/policies/user_policy.rb")
+      expect(prompt).to include("UserPolicy")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Explain User authorization")
     end
   end
 end
