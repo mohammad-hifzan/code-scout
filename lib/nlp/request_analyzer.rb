@@ -33,6 +33,45 @@ class RequestAnalyzer
     stacktrace
   ].freeze
 
+  TOPIC_PATTERNS = {
+    validation: [
+      /\bvalidat(ion|e|es|or|ions|ors)\b/i,
+      /\b\w*validator(s)?\b/i
+    ],
+    serialization: [
+      /\b\w*serializer(s)?\b/i,
+      /\b(serialize|serialized|serialization|as_json|jbuilder)\b/i,
+      /\bjson(\s+representation)?\b/i
+    ],
+    job: [
+      /\b\w*job(s)?\b/i,
+      /\b\w*worker(s)?\b/i,
+      /\bsidekiq\b/i,
+      /\bperform\b/i,
+      /\bbackground\s+job(s)?\b/i
+    ],
+    mailer: [
+      /\b\w*mailer(s)?\b/i,
+      /\bemail\s+delivery\b/i,
+      /\bdeliver\s+mail\b/i
+    ],
+    service: [
+      /\bservice\s+object(s)?\b/i,
+      /\b\w*service(s)?\b/i,
+      /\binteractor(s)?\b/i,
+      /\buse\s+case(s)?\b/i
+    ],
+    policy: [
+      /\b\w*policy\b/i,
+      /\bauthoriz(e|ation)\b/i,
+      /\bpundit\b/i
+    ],
+    association: [
+      /\b(association|associations|relationship|relationships)\b/i,
+      /\b(belongs_to|has_many|has_one|has_and_belongs_to_many)\b/i
+    ]
+  }.freeze
+
   def initialize(models: [])
     @models = models || []
   end
@@ -42,7 +81,8 @@ class RequestAnalyzer
 
     {
       action: detect_action(request),
-      entity: detect_entity(request, models_list)
+      entity: detect_entity(request, models_list),
+      topic: detect_topic(request)
     }
   end
 
@@ -78,6 +118,19 @@ class RequestAnalyzer
     end
 
     nil
+  end
+
+  def detect_topic(request)
+    text = request.downcase
+
+    detected = []
+    TOPIC_PATTERNS.each do |topic, patterns|
+      if patterns.any? { |pattern| text.match?(pattern) }
+        detected << topic
+      end
+    end
+
+    detected.size == 1 ? detected.first : :general
   end
 
   def build_model_lookup(models)

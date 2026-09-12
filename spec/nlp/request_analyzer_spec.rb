@@ -12,7 +12,8 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("Add slug validation to Shop")
       ).to eq(
         action: :edit,
-        entity: "Shop"
+        entity: "Shop",
+        topic: :validation
       )
     end
 
@@ -21,7 +22,8 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("Explain Shop")
       ).to eq(
         action: :explain,
-        entity: "Shop"
+        entity: "Shop",
+        topic: :general
       )
     end
 
@@ -30,7 +32,8 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("Debug Shop")
       ).to eq(
         action: :debug,
-        entity: "Shop"
+        entity: "Shop",
+        topic: :general
       )
     end
 
@@ -38,6 +41,7 @@ RSpec.describe RequestAnalyzer do
       analysis = analyzer.analyze("some generic request")
       expect(analysis[:action]).to eq(:edit)
       expect(analysis[:entity]).to be_nil
+      expect(analysis[:topic]).to eq(:general)
     end
 
     it "resolves entity when action is lowercase" do
@@ -45,7 +49,8 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("add a validation to User")
       ).to eq(
         action: :edit,
-        entity: "User"
+        entity: "User",
+        topic: :validation
       )
     end
 
@@ -54,7 +59,8 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("Add a validation to User.")
       ).to eq(
         action: :edit,
-        entity: "User"
+        entity: "User",
+        topic: :validation
       )
     end
 
@@ -63,7 +69,8 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("Change how User's posts are serialized.")
       ).to eq(
         action: :edit,
-        entity: "User"
+        entity: "User",
+        topic: :serialization
       )
     end
 
@@ -72,7 +79,8 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("Users are getting a NoMethodError when loading their posts. Fix it.")
       ).to eq(
         action: :debug,
-        entity: "User"
+        entity: "User",
+        topic: :general
       )
     end
 
@@ -81,7 +89,8 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("Change the User model's status representation.")
       ).to eq(
         action: :edit,
-        entity: "User"
+        entity: "User",
+        topic: :general
       )
     end
 
@@ -90,7 +99,8 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("Delete old Posts from the database")
       ).to eq(
         action: :edit,
-        entity: "Post"
+        entity: "Post",
+        topic: :general
       )
     end
 
@@ -99,7 +109,8 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("explain user permissions")
       ).to eq(
         action: :explain,
-        entity: "User"
+        entity: "User",
+        topic: :general
       )
     end
 
@@ -108,7 +119,8 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("Add total amount calculation to Billing::Invoice")
       ).to eq(
         action: :edit,
-        entity: "Billing::Invoice"
+        entity: "Billing::Invoice",
+        topic: :general
       )
     end
 
@@ -117,7 +129,8 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("Update Invoice tax rates")
       ).to eq(
         action: :edit,
-        entity: "Billing::Invoice"
+        entity: "Billing::Invoice",
+        topic: :general
       )
     end
 
@@ -126,7 +139,8 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("Add validation to Account")
       ).to eq(
         action: :edit,
-        entity: nil
+        entity: nil,
+        topic: :validation
       )
     end
 
@@ -135,21 +149,24 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("Add validation to unknown model")
       ).to eq(
         action: :edit,
-        entity: nil
+        entity: nil,
+        topic: :validation
       )
 
       expect(
         analyzer.analyze("Explain unknown concept")
       ).to eq(
         action: :explain,
-        entity: nil
+        entity: nil,
+        topic: :general
       )
 
       expect(
         analyzer.analyze("Debug unexpected behavior")
       ).to eq(
         action: :debug,
-        entity: nil
+        entity: nil,
+        topic: :general
       )
     end
 
@@ -158,7 +175,8 @@ RSpec.describe RequestAnalyzer do
         analyzer.analyze("Change Orders status")
       ).to eq(
         action: :edit,
-        entity: nil
+        entity: nil,
+        topic: :general
       )
     end
 
@@ -168,8 +186,92 @@ RSpec.describe RequestAnalyzer do
         scoped_analyzer.analyze("Explain Shop", models: ["Shop"])
       ).to eq(
         action: :explain,
-        entity: "Shop"
+        entity: "Shop",
+        topic: :general
       )
+    end
+  end
+
+  describe "topic classification" do
+    it "detects validation topic" do
+      expect(analyzer.analyze("Add a validation to User")[:topic]).to eq(:validation)
+      expect(analyzer.analyze("Add a presence validation to User")[:topic]).to eq(:validation)
+      expect(analyzer.analyze("validate user email format")[:topic]).to eq(:validation)
+      expect(analyzer.analyze("User model validates presence")[:topic]).to eq(:validation)
+    end
+
+    it "detects serialization topic" do
+      expect(analyzer.analyze("Change how User's posts are serialized")[:topic]).to eq(:serialization)
+      expect(analyzer.analyze("Change User JSON representation")[:topic]).to eq(:serialization)
+      expect(analyzer.analyze("Create UserSerializer for API")[:topic]).to eq(:serialization)
+      expect(analyzer.analyze("Add as_json helper to User")[:topic]).to eq(:serialization)
+      expect(analyzer.analyze("Update user jbuilder view")[:topic]).to eq(:serialization)
+    end
+
+    it "detects job topic" do
+      expect(analyzer.analyze("Debug failure in UserJob")[:topic]).to eq(:job)
+      expect(analyzer.analyze("Fix User Sidekiq worker")[:topic]).to eq(:job)
+      expect(analyzer.analyze("Add background job to process User")[:topic]).to eq(:job)
+      expect(analyzer.analyze("Implement perform method for UserSync")[:topic]).to eq(:job)
+    end
+
+    it "detects mailer topic" do
+      expect(analyzer.analyze("Update UserMailer")[:topic]).to eq(:mailer)
+      expect(analyzer.analyze("Fix email delivery for User")[:topic]).to eq(:mailer)
+      expect(analyzer.analyze("Configure deliver mail for User")[:topic]).to eq(:mailer)
+    end
+
+    it "detects service topic" do
+      expect(analyzer.analyze("Create User service object")[:topic]).to eq(:service)
+      expect(analyzer.analyze("Refactor UserService")[:topic]).to eq(:service)
+      expect(analyzer.analyze("Add UserCreator interactor")[:topic]).to eq(:service)
+      expect(analyzer.analyze("Implement UserRegistration use case")[:topic]).to eq(:service)
+    end
+
+    it "detects policy topic" do
+      expect(analyzer.analyze("Change User authorization policy")[:topic]).to eq(:policy)
+      expect(analyzer.analyze("Update UserPolicy")[:topic]).to eq(:policy)
+      expect(analyzer.analyze("Authorize User in controller")[:topic]).to eq(:policy)
+      expect(analyzer.analyze("Add Pundit check to User")[:topic]).to eq(:policy)
+    end
+
+    it "detects association topic" do
+      expect(analyzer.analyze("Fix User association with posts")[:topic]).to eq(:association)
+      expect(analyzer.analyze("Add belongs_to account to User")[:topic]).to eq(:association)
+      expect(analyzer.analyze("Change User has_many relationship")[:topic]).to eq(:association)
+    end
+
+    it "defaults to :general for generic and non-topic requests" do
+      expect(analyzer.analyze("Explain User")[:topic]).to eq(:general)
+      expect(analyzer.analyze("Change User's status representation")[:topic]).to eq(:general)
+      expect(analyzer.analyze("Some generic request")[:topic]).to eq(:general)
+    end
+
+    it "does not classify notification preferences as mailer" do
+      expect(analyzer.analyze("Change User notification preferences")[:topic]).to eq(:general)
+    end
+
+    it "does not classify arbitrary words like creator as service" do
+      expect(analyzer.analyze("Update User creator")[:topic]).to eq(:general)
+    end
+
+    it "returns :general when competing distinct topics are detected" do
+      expect(analyzer.analyze("Add validation and serialization to User")[:topic]).to eq(:general)
+      expect(analyzer.analyze("Update UserJob and UserMailer")[:topic]).to eq(:general)
+    end
+
+    it "preserves full result with action, entity, and topic" do
+      result = analyzer.analyze("Change how User's posts are serialized")
+      expect(result[:action]).to eq(:edit)
+      expect(result[:entity]).to eq("User")
+      expect(result[:topic]).to eq(:serialization)
+    end
+
+    it "handles unknown entities while still detecting topic" do
+      result = analyzer.analyze("Add validation to Account")
+      expect(result[:action]).to eq(:edit)
+      expect(result[:entity]).to be_nil
+      expect(result[:topic]).to eq(:validation)
     end
   end
 end
