@@ -27,7 +27,16 @@ class ContextBuilder
         related_models(model, model_name),
 
       primary_views:
-        primary_views(model_name)
+        primary_views(model_name),
+
+      serializers:
+        serializers(model, model_name),
+
+      json_views:
+        json_views(model_name),
+
+      presenters:
+        presenters(model_name)
     }
   end
 
@@ -81,5 +90,37 @@ class ContextBuilder
 
     Dir.glob(path_pattern)
   end
-  
+
+  def serializers(model, model_name)
+    files = []
+
+    # 1. Primary serializer (e.g. app/serializers/user_serializer.rb)
+    primary_serializer = File.join(project_path, "app/serializers/#{model_name.underscore}_serializer.rb")
+    files << primary_serializer if File.exist?(primary_serializer)
+
+    # 2. Serializers for directly associated models (e.g. app/serializers/post_serializer.rb)
+    if model && model[:associations]
+      model[:associations].values.flatten.each do |assoc|
+        resolved = @association_resolver.resolve(model_name, assoc)
+        direct_model_name = resolved[:through_model] || resolved[:target_model]
+        next unless direct_model_name
+
+        assoc_serializer = File.join(project_path, "app/serializers/#{direct_model_name.underscore}_serializer.rb")
+        files << assoc_serializer if File.exist?(assoc_serializer)
+      end
+    end
+
+    files.uniq
+  end
+
+  def json_views(model_name)
+    view_directory = model_name.underscore.pluralize
+    jbuilder_pattern = File.join(project_path, "app/views", view_directory, "**", "*.jbuilder")
+    Dir.glob(jbuilder_pattern)
+  end
+
+  def presenters(model_name)
+    presenter_file = File.join(project_path, "app/presenters/#{model_name.underscore}_presenter.rb")
+    File.exist?(presenter_file) ? [presenter_file] : []
+  end
 end

@@ -200,6 +200,45 @@ RSpec.describe ContextBuilder do
           )
         end
       end
+
+      context 'with serialization and representation artifacts' do
+        let(:user_serializer_path) { '/fake/project/app/serializers/user_serializer.rb' }
+        let(:post_serializer_path) { '/fake/project/app/serializers/post_serializer.rb' }
+        let(:user_jbuilder_path) { '/fake/project/app/views/users/show.json.jbuilder' }
+        let(:user_presenter_path) { '/fake/project/app/presenters/user_presenter.rb' }
+
+        before do
+          allow(File).to receive(:exist?).with(user_serializer_path).and_return(true)
+          allow(File).to receive(:exist?).with(post_serializer_path).and_return(true)
+          allow(File).to receive(:exist?).with(user_presenter_path).and_return(true)
+          allow(Dir).to receive(:glob).with('/fake/project/app/views/users/**/*.jbuilder').and_return([user_jbuilder_path])
+        end
+
+        it 'discovers primary and associated serializers separately' do
+          context = builder.build('User')
+          expect(context[:serializers]).to contain_exactly(
+            user_serializer_path,
+            post_serializer_path
+          )
+        end
+
+        it 'discovers json views separately' do
+          context = builder.build('User')
+          expect(context[:json_views]).to contain_exactly(user_jbuilder_path)
+        end
+
+        it 'discovers presenters separately' do
+          context = builder.build('User')
+          expect(context[:presenters]).to contain_exactly(user_presenter_path)
+        end
+
+        it 'returns empty arrays when no serializers, json views, or presenters exist' do
+          context = builder.build('Person')
+          expect(context[:serializers]).to be_empty
+          expect(context[:json_views]).to be_empty
+          expect(context[:presenters]).to be_empty
+        end
+      end
     end
   end
 

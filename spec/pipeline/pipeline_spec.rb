@@ -118,7 +118,7 @@ RSpec.describe Pipeline::Pipeline do
 
     expect(engine)
       .to receive(:build)
-      .with("Shop", rule: rule)
+      .with("Shop", rule: rule, topic: :general)
       .and_return(context)
 
     expect(estimator)
@@ -162,9 +162,9 @@ RSpec.describe Pipeline::Pipeline do
     allow(ContextEngine).to receive(:new).and_return(engine)
 
     expect(mapper).to receive(:map).and_return(project_map)
-    expect(analyzer).to receive(:analyze).with(request).and_return({ action: :edit, entity: nil })
+    expect(analyzer).to receive(:analyze).with(request).and_return({ action: :edit, entity: nil, topic: :general })
     expect(selector).to receive(:select).with(:edit).and_return(rule)
-    expect(engine).to receive(:build).with(nil, rule: rule).and_return(nil)
+    expect(engine).to receive(:build).with(nil, rule: rule, topic: :general).and_return(nil)
 
     result = described_class.new(project_path).run(request)
     expect(result).to be_nil
@@ -183,6 +183,13 @@ RSpec.describe Pipeline::Pipeline do
 
     def create_controller_file(name, content)
       full_path = File.join(tmp_project_path, "app", "controllers", "#{name}.rb")
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
+    def create_serializer_file(name, content)
+      full_path = File.join(tmp_project_path, "app", "serializers", "#{name}.rb")
       FileUtils.mkdir_p(File.dirname(full_path))
       File.write(full_path, content)
       full_path
@@ -234,6 +241,53 @@ RSpec.describe Pipeline::Pipeline do
       result = pipeline.run("Add a validation to UnknownModel.")
 
       expect(result).to be_nil
+    end
+
+    it "propagates :serialization topic to discover and include serializers in context" do
+      create_serializer_file(
+        "user_serializer",
+        <<~RUBY
+          class UserSerializer < ActiveModel::Serializer
+            attributes :id, :name
+            has_many :posts
+          end
+        RUBY
+      )
+      create_serializer_file(
+        "post_serializer",
+        <<~RUBY
+          class PostSerializer < ActiveModel::Serializer
+            attributes :id, :title
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Change how User's posts are serialized.")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/serializers/user_serializer.rb")
+      expect(prompt).to include("app/serializers/post_serializer.rb")
+      expect(prompt).to include("UserSerializer")
+      expect(prompt).to include("PostSerializer")
+    end
+
+    it "does not include serializers when the topic is :validation" do
+      create_serializer_file(
+        "user_serializer",
+        <<~RUBY
+          class UserSerializer < ActiveModel::Serializer
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Add a validation to User.")
+
+      expect(prompt).not_to include("app/serializers/user_serializer.rb")
     end
   end
 end

@@ -7,7 +7,7 @@ class ContextEngine
     @project_index = project_index
   end
 
-  def build(entity, rule:)
+  def build(entity, rule:, topic: :general)
     model = @project_index.model(entity)
     return unless model
 
@@ -31,6 +31,13 @@ class ContextEngine
     if rule.include_policy?
       result[:required] ||= []
       result[:required] << context[:primary_policy] if context[:primary_policy]
+    end
+
+    if topic == :serialization
+      result[:required] ||= []
+      result[:required].concat(Array(context[:serializers]).compact)
+      result[:required].concat(Array(context[:json_views]).compact)
+      result[:required].uniq!
     end
 
     if rule.include_related_models?

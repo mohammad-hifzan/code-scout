@@ -360,6 +360,52 @@ RSpec.describe ContextEngine do
           )
         end
       end
+
+      context 'with topic selection' do
+        let(:model_context) do
+          {
+            model: 'user.rb',
+            primary_controller: 'users_controller.rb',
+            primary_policy: 'user_policy.rb',
+            related_models: ['post.rb'],
+            primary_views: ['users/index.html.erb'],
+            serializers: ['user_serializer.rb', 'post_serializer.rb'],
+            json_views: ['users/show.json.jbuilder'],
+            presenters: ['user_presenter.rb']
+          }
+        end
+
+        it 'does not include serializers, json views, or presenters when topic is :general' do
+          allow(rule).to receive(:include_primary?).and_return(true)
+          allow(rule).to receive(:include_controller?).and_return(true)
+
+          result = engine.build(entity, rule: rule, topic: :general)
+          expect(result[:required]).to contain_exactly('users_controller.rb')
+          expect(result[:required]).not_to include('user_serializer.rb')
+          expect(result[:required]).not_to include('users/show.json.jbuilder')
+          expect(result[:required]).not_to include('user_presenter.rb')
+        end
+
+        it 'elevates serializers and json views into required files when topic is :serialization' do
+          allow(rule).to receive(:include_primary?).and_return(true)
+          allow(rule).to receive(:include_controller?).and_return(true)
+
+          result = engine.build(entity, rule: rule, topic: :serialization)
+          expect(result[:required]).to contain_exactly(
+            'users_controller.rb',
+            'user_serializer.rb',
+            'post_serializer.rb',
+            'users/show.json.jbuilder'
+          )
+        end
+
+        it 'does not include unrelated artifact types for serialization topic' do
+          result = engine.build(entity, rule: rule, topic: :serialization)
+          expect(result[:required]).not_to include('user_sync_job.rb')
+          expect(result[:required]).not_to include('user_mailer.rb')
+          expect(result[:required]).not_to include('user_presenter.rb')
+        end
+      end
     end
   end
 end
