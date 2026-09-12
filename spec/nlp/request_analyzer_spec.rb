@@ -247,17 +247,75 @@ RSpec.describe RequestAnalyzer do
       expect(analyzer.analyze("Some generic request")[:topic]).to eq(:general)
     end
 
-    it "does not classify notification preferences as mailer" do
-      expect(analyzer.analyze("Change User notification preferences")[:topic]).to eq(:general)
+describe "adversarial scenario matrix" do
+      it "evaluates validation scenarios accurately" do
+        expect(analyzer.analyze("Add a validation to User")).to eq(action: :edit, entity: "User", topic: :validation)
+        expect(analyzer.analyze("Why is User validation failing?")).to eq(action: :debug, entity: "User", topic: :validation)
+        expect(analyzer.analyze("Change User email validation")).to eq(action: :edit, entity: "User", topic: :validation)
+      end
+
+      it "evaluates serialization scenarios accurately" do
+        expect(analyzer.analyze("Change how User is serialized")).to eq(action: :edit, entity: "User", topic: :serialization)
+        expect(analyzer.analyze("Add email to User JSON response")).to eq(action: :edit, entity: "User", topic: :serialization)
+        expect(analyzer.analyze("Why is UserSerializer not showing email?")).to eq(action: :explain, entity: nil, topic: :serialization)
+        expect(analyzer.analyze("Change the JSON representation of User")).to eq(action: :edit, entity: "User", topic: :serialization)
+      end
+
+      it "evaluates association scenarios accurately" do
+        expect(analyzer.analyze("Add an association between User and Account")).to eq(action: :edit, entity: "User", topic: :association)
+        expect(analyzer.analyze("Why are User accounts not loading?")).to eq(action: :explain, entity: "User", topic: :general)
+        expect(analyzer.analyze("Change User's posts association")).to eq(action: :edit, entity: "User", topic: :association)
+      end
+
+      it "evaluates policy scenarios accurately" do
+        expect(analyzer.analyze("Change authorization for User")).to eq(action: :edit, entity: "User", topic: :policy)
+        expect(analyzer.analyze("Why can this user not access User?")).to eq(action: :explain, entity: "User", topic: :general)
+        expect(analyzer.analyze("Update UserPolicy")).to eq(action: :edit, entity: nil, topic: :policy)
+        expect(analyzer.analyze("Update authorization policy for User")).to eq(action: :edit, entity: "User", topic: :policy)
+      end
+
+      it "evaluates job classification accurately" do
+        expect(analyzer.analyze("Change UserJob")).to eq(action: :edit, entity: nil, topic: :job)
+        expect(analyzer.analyze("Why is the User job failing?")).to eq(action: :debug, entity: "User", topic: :job)
+        expect(analyzer.analyze("Update the background job for User")).to eq(action: :edit, entity: "User", topic: :job)
+      end
+
+      it "evaluates mailer classification and avoids false positives" do
+        expect(analyzer.analyze("Change UserMailer")).to eq(action: :edit, entity: nil, topic: :mailer)
+        expect(analyzer.analyze("Why isn't the User email being sent?")).to eq(action: :explain, entity: "User", topic: :general)
+        expect(analyzer.analyze("Update the welcome email for User")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Change notification preferences for User")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Change email preferences for User")).to eq(action: :edit, entity: "User", topic: :general)
+      end
+
+      it "evaluates service classification and avoids false positives" do
+        expect(analyzer.analyze("Change UserService")).to eq(action: :edit, entity: nil, topic: :service)
+        expect(analyzer.analyze("Why is the User service failing?")).to eq(action: :debug, entity: "User", topic: :service)
+        expect(analyzer.analyze("Move this User operation into a service")).to eq(action: :edit, entity: "User", topic: :service)
+        expect(analyzer.analyze("Update User creator")).to eq(action: :edit, entity: "User", topic: :general)
+      end
+
+      it "evaluates general / explain / debug scenarios accurately" do
+        expect(analyzer.analyze("Explain User")).to eq(action: :explain, entity: "User", topic: :general)
+        expect(analyzer.analyze("Debug User")).to eq(action: :debug, entity: "User", topic: :general)
+        expect(analyzer.analyze("Why is User failing?")).to eq(action: :debug, entity: "User", topic: :general)
+        expect(analyzer.analyze("How does User work?")).to eq(action: :explain, entity: "User", topic: :general)
+      end
     end
 
-    it "does not classify arbitrary words like creator as service" do
-      expect(analyzer.analyze("Update User creator")[:topic]).to eq(:general)
-    end
+    describe "adversarial compound / ambiguous requests" do
+      it "safely falls back to :general when multiple distinct topics compete" do
+        expect(analyzer.analyze("Change User serialization and fix the validation")[:topic]).to eq(:general)
+        expect(analyzer.analyze("Why is UserSerializer failing validation?")[:topic]).to eq(:general)
+        expect(analyzer.analyze("Change the User email validation in the JSON response")[:topic]).to eq(:general)
+        expect(analyzer.analyze("Debug User because posts are missing from the response")[:topic]).to eq(:general)
+        expect(analyzer.analyze("Update UserPolicy and its JSON representation")[:topic]).to eq(:general)
+      end
 
-    it "returns :general when competing distinct topics are detected" do
-      expect(analyzer.analyze("Add validation and serialization to User")[:topic]).to eq(:general)
-      expect(analyzer.analyze("Update UserJob and UserMailer")[:topic]).to eq(:general)
+      it "isolates single dominant topic when non-colliding prose is present" do
+        expect(analyzer.analyze("Fix the User service that sends email")[:topic]).to eq(:service)
+        expect(analyzer.analyze("Change notification preferences for User")[:topic]).to eq(:general)
+      end
     end
 
     it "preserves full result with action, entity, and topic" do

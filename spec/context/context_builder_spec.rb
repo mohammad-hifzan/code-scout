@@ -267,22 +267,31 @@ RSpec.describe ContextBuilder do
             )
           end
 
-          it 'accepts pre-categorized references hash' do
-            references = {
-              serializers: [summary_serializer_path],
-              presenters: [card_presenter_path]
-            }
+          it 'isolates unrelated reference categories so they do not pollute serializers or presenters' do
+            references = [
+              '/fake/project/app/services/user_service.rb',
+              '/fake/project/app/jobs/user_job.rb',
+              '/fake/project/app/mailers/user_mailer.rb',
+              '/fake/project/app/policies/other_policy.rb'
+            ]
 
             context = builder.build('User', references: references)
             expect(context[:serializers]).to contain_exactly(
               user_serializer_path,
-              post_serializer_path,
-              summary_serializer_path
+              post_serializer_path
             )
-            expect(context[:presenters]).to contain_exactly(
-              user_presenter_path,
-              card_presenter_path
-            )
+            expect(context[:presenters]).to contain_exactly(user_presenter_path)
+          end
+
+          it 'does not discover unrelated model serializers or presenters merely because they exist' do
+            order_serializer = '/fake/project/app/serializers/order_serializer.rb'
+            order_presenter = '/fake/project/app/presenters/order_presenter.rb'
+            allow(File).to receive(:exist?).with(order_serializer).and_return(true)
+            allow(File).to receive(:exist?).with(order_presenter).and_return(true)
+
+            context = builder.build('User')
+            expect(context[:serializers]).not_to include(order_serializer)
+            expect(context[:presenters]).not_to include(order_presenter)
           end
         end
       end

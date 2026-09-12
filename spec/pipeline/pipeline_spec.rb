@@ -287,7 +287,47 @@ RSpec.describe Pipeline::Pipeline do
       pipeline = described_class.new(tmp_project_path)
       prompt = pipeline.run("Add a validation to User.")
 
+expect(prompt).not_to include("app/serializers/user_serializer.rb")
+    end
+
+    it "does not include serializers when the request is generic even if serializer exists on disk" do
+      create_serializer_file(
+        "user_serializer",
+        <<~RUBY
+          class UserSerializer < ActiveModel::Serializer
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Update User email.")
+
       expect(prompt).not_to include("app/serializers/user_serializer.rb")
+    end
+
+    it "bounds context and preserves high-priority primary model within token budget" do
+      create_serializer_file(
+        "user_serializer",
+        <<~RUBY
+          class UserSerializer < ActiveModel::Serializer
+          end
+        RUBY
+      )
+
+      # Create large view file that might exceed budget if unbounded
+      large_view_content = "# Large view\n" + ("x" * 20_000)
+      full_view_path = File.join(tmp_project_path, "app", "views", "users", "index.html.erb")
+      FileUtils.mkdir_p(File.dirname(full_view_path))
+      File.write(full_view_path, large_view_content)
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Change how User is serialized.")
+
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/serializers/user_serializer.rb")
+      expect(prompt).not_to include("x" * 20_000)
     end
   end
 end

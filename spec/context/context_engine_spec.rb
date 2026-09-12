@@ -441,6 +441,22 @@ RSpec.describe ContextEngine do
           expect(result[:required]).not_to include('user_serializer.rb')
         end
 
+it 'ensures general topic does not receive serialization candidates even when present in context' do
+          allow(rule).to receive(:include_primary?).and_return(true)
+          allow(rule).to receive(:include_controller?).and_return(true)
+          allow(rule).to receive(:include_policy?).and_return(true)
+          allow(rule).to receive(:include_related_models?).and_return(true)
+          allow(rule).to receive(:include_views?).and_return(true)
+
+          result = engine.build(entity, rule: rule, topic: :general)
+          all_selected_files = Array(result[:primary]) + Array(result[:required]) + Array(result[:related]) + Array(result[:optional])
+
+          expect(all_selected_files).not_to include('user_serializer.rb')
+          expect(all_selected_files).not_to include('post_serializer.rb')
+          expect(all_selected_files).not_to include('users/show.json.jbuilder')
+          expect(all_selected_files).not_to include('user_presenter.rb')
+        end
+
         it 'handles nil topic safely' do
           allow(rule).to receive(:include_primary?).and_return(true)
           allow(rule).to receive(:include_controller?).and_return(true)
