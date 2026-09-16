@@ -381,6 +381,118 @@ RSpec.describe ContextBuilder do
           end
         end
       end
+
+      context 'with mailer and email template artifacts' do
+        let(:user_mailer_path) { '/fake/project/app/mailers/user_mailer.rb' }
+        let(:user_mailer_views) do
+          [
+            '/fake/project/app/views/user_mailer/welcome.html.erb',
+            '/fake/project/app/views/user_mailer/reset_password.text.erb'
+          ]
+        end
+        let(:admin_user_mailer_path) { '/fake/project/app/mailers/admin/user_mailer.rb' }
+        let(:admin_user_mailer_views) do
+          [
+            '/fake/project/app/views/admin/user_mailer/welcome.html.erb'
+          ]
+        end
+
+        it 'discovers conventional ActionMailer file' do
+          allow(File).to receive(:exist?).with(user_mailer_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:mailers]).to contain_exactly(user_mailer_path)
+          expect(context[:mailer_views]).to be_empty
+        end
+
+        it 'discovers mailer views in conventional directory' do
+          allow(Dir).to receive(:glob).with('/fake/project/app/views/user_mailer/**/*').and_return(user_mailer_views)
+          allow(File).to receive(:file?).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:mailers]).to be_empty
+          expect(context[:mailer_views]).to contain_exactly(
+            '/fake/project/app/views/user_mailer/welcome.html.erb',
+            '/fake/project/app/views/user_mailer/reset_password.text.erb'
+          )
+        end
+
+        it 'discovers both mailer and mailer views when both exist' do
+          allow(File).to receive(:exist?).with(user_mailer_path).and_return(true)
+          allow(Dir).to receive(:glob).with('/fake/project/app/views/user_mailer/**/*').and_return(user_mailer_views)
+          allow(File).to receive(:file?).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:mailers]).to contain_exactly(user_mailer_path)
+          expect(context[:mailer_views]).to contain_exactly(
+            '/fake/project/app/views/user_mailer/welcome.html.erb',
+            '/fake/project/app/views/user_mailer/reset_password.text.erb'
+          )
+        end
+
+        it 'discovers namespaced mailer and mailer views and isolates from root user mailers' do
+          allow(File).to receive(:exist?).with(admin_user_mailer_path).and_return(true)
+          allow(File).to receive(:exist?).with(user_mailer_path).and_return(true)
+          allow(Dir).to receive(:glob).with('/fake/project/app/views/admin/user_mailer/**/*').and_return(admin_user_mailer_views)
+          allow(Dir).to receive(:glob).with('/fake/project/app/views/user_mailer/**/*').and_return(user_mailer_views)
+          allow(File).to receive(:file?).and_return(true)
+
+          context = builder.build('Admin::User')
+          expect(context[:mailers]).to contain_exactly(admin_user_mailer_path)
+          expect(context[:mailer_views]).to contain_exactly(
+            '/fake/project/app/views/admin/user_mailer/welcome.html.erb'
+          )
+          expect(context[:mailers]).not_to include(user_mailer_path)
+          expect(context[:mailer_views]).not_to include('/fake/project/app/views/user_mailer/welcome.html.erb')
+        end
+
+        it 'returns empty arrays when no mailer or mailer views exist' do
+          context = builder.build('Person')
+          expect(context[:mailers]).to be_empty
+          expect(context[:mailer_views]).to be_empty
+        end
+
+        context 'with reference-derived mailer expansion' do
+          let(:custom_mailer_path) { '/fake/project/app/mailers/user_notification_mailer.rb' }
+
+          it 'expands mailers with reference candidates and deduplicates' do
+            allow(File).to receive(:exist?).with(user_mailer_path).and_return(true)
+            references = [
+              custom_mailer_path,
+              user_mailer_path # duplicate of conventional
+            ]
+
+            context = builder.build('User', references: references)
+            expect(context[:mailers]).to contain_exactly(
+              user_mailer_path,
+              custom_mailer_path
+            )
+          end
+
+          it 'isolates unrelated reference categories so they do not pollute mailers' do
+            references = [
+              '/fake/project/app/services/user_service.rb',
+              '/fake/project/app/serializers/user_serializer.rb',
+              '/fake/project/app/jobs/user_job.rb',
+              '/fake/project/app/policies/other_policy.rb'
+            ]
+
+            context = builder.build('User', references: references)
+            expect(context[:mailers]).to be_empty
+          end
+
+          it 'does not discover unrelated model mailers merely because they exist' do
+            order_mailer = '/fake/project/app/mailers/order_mailer.rb'
+            billing_mailer = '/fake/project/app/mailers/billing_mailer.rb'
+            allow(File).to receive(:exist?).with(order_mailer).and_return(true)
+            allow(File).to receive(:exist?).with(billing_mailer).and_return(true)
+
+            context = builder.build('User')
+            expect(context[:mailers]).not_to include(order_mailer)
+            expect(context[:mailers]).not_to include(billing_mailer)
+          end
+        end
+      end
     end
   end
 

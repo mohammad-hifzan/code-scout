@@ -216,7 +216,12 @@ RSpec.describe RequestAnalyzer do
     end
 
     it "detects mailer topic" do
+      expect(analyzer.analyze("Change UserMailer")[:topic]).to eq(:mailer)
       expect(analyzer.analyze("Update UserMailer")[:topic]).to eq(:mailer)
+      expect(analyzer.analyze("Why is UserMailer failing?")[:topic]).to eq(:mailer)
+      expect(analyzer.analyze("Why is UserMailer not delivering?")[:topic]).to eq(:mailer)
+      expect(analyzer.analyze("Update the User welcome email template")[:topic]).to eq(:mailer)
+      expect(analyzer.analyze("Change the password reset email template for User")[:topic]).to eq(:mailer)
       expect(analyzer.analyze("Fix email delivery for User")[:topic]).to eq(:mailer)
       expect(analyzer.analyze("Configure deliver mail for User")[:topic]).to eq(:mailer)
     end
@@ -316,8 +321,30 @@ RSpec.describe RequestAnalyzer do
 
       it "evaluates mailer classification and avoids false positives" do
         expect(analyzer.analyze("Change UserMailer")).to eq(action: :edit, entity: "User", topic: :mailer)
+        expect(analyzer.analyze("Update UserMailer")).to eq(action: :edit, entity: "User", topic: :mailer)
+        expect(analyzer.analyze("Why is UserMailer failing?")).to eq(action: :debug, entity: "User", topic: :mailer)
+        expect(analyzer.analyze("Why is UserMailer not delivering?")).to eq(action: :explain, entity: "User", topic: :mailer)
+        expect(analyzer.analyze("Update the User welcome email template")).to eq(action: :edit, entity: "User", topic: :mailer)
+        expect(analyzer.analyze("Change the password reset email template for User")).to eq(action: :edit, entity: "User", topic: :mailer)
+        expect(analyzer.analyze("Change Admin::UserMailer", models: ["Admin::User"])).to eq(action: :edit, entity: "Admin::User", topic: :mailer)
+        expect(analyzer.analyze("Why is Admin::UserMailer failing?", models: ["Admin::User"])).to eq(action: :debug, entity: "Admin::User", topic: :mailer)
+
+        expect(analyzer.analyze("Update User's email address")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Change User email preferences")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Update User's email validation")).to eq(action: :edit, entity: "User", topic: :validation)
+        expect(analyzer.analyze("Verify User email format")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Change User mailing address")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Update notification email settings")).to eq(action: :edit, entity: nil, topic: :general)
+        expect(analyzer.analyze("Why is User email field blank?")).to eq(action: :explain, entity: "User", topic: :general)
+        expect(analyzer.analyze("Add email uniqueness validation to User")).to eq(action: :edit, entity: "User", topic: :validation)
+        expect(analyzer.analyze("Discuss User email confirmation workflow")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Update User's email column")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Send User an email")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Send a welcome email to User")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Email User after registration")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Notify User by email")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Change User notification email")).to eq(action: :edit, entity: "User", topic: :general)
         expect(analyzer.analyze("Why isn't the User email being sent?")).to eq(action: :explain, entity: "User", topic: :general)
-        expect(analyzer.analyze("Update the welcome email for User")).to eq(action: :edit, entity: "User", topic: :general)
         expect(analyzer.analyze("Change notification preferences for User")).to eq(action: :edit, entity: "User", topic: :general)
         expect(analyzer.analyze("Change email preferences for User")).to eq(action: :edit, entity: "User", topic: :general)
       end
@@ -428,6 +455,11 @@ RSpec.describe RequestAnalyzer do
           entity: "Admin::User",
           topic: :job
         )
+        expect(scoped_analyzer.analyze("Change Admin::UserMailer")).to eq(
+          action: :edit,
+          entity: "Admin::User",
+          topic: :mailer
+        )
       end
 
       it "preserves standard entity resolution for base models" do
@@ -452,6 +484,11 @@ RSpec.describe RequestAnalyzer do
           action: :edit,
           entity: nil,
           topic: :job
+        )
+        expect(analyzer.analyze("Change SomeRandomMailer")).to eq(
+          action: :edit,
+          entity: nil,
+          topic: :mailer
         )
       end
 

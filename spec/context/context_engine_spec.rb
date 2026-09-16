@@ -376,11 +376,13 @@ RSpec.describe ContextEngine do
             serializers: ['user_serializer.rb', 'post_serializer.rb'],
             json_views: ['users/show.json.jbuilder'],
             presenters: ['user_presenter.rb'],
-            jobs: ['user_job.rb', 'user_worker.rb']
+            jobs: ['user_job.rb', 'user_worker.rb'],
+            mailers: ['user_mailer.rb'],
+            mailer_views: ['users/welcome.html.erb']
           }
         end
 
-        it 'does not include serializers, json views, presenters, or jobs when topic is :general' do
+        it 'does not include serializers, json views, presenters, jobs, or mailers when topic is :general' do
           allow(rule).to receive(:include_primary?).and_return(true)
           allow(rule).to receive(:include_controller?).and_return(true)
 
@@ -391,6 +393,8 @@ RSpec.describe ContextEngine do
           expect(result[:required]).not_to include('user_presenter.rb')
           expect(result[:required]).not_to include('user_job.rb')
           expect(result[:required]).not_to include('user_worker.rb')
+          expect(result[:required]).not_to include('user_mailer.rb')
+          expect(result[:required]).not_to include('users/welcome.html.erb')
         end
 
         it 'elevates serializers and json views into required files when topic is :serialization' do
@@ -555,6 +559,53 @@ RSpec.describe ContextEngine do
 
             expect(result_nil[:required]).to contain_exactly('users_controller.rb')
             expect(result_unknown[:required]).to contain_exactly('users_controller.rb')
+          end
+        end
+
+        context 'with mailer topic selection' do
+          let(:edit_rule) { ContextRules::EditModelRule.new }
+          let(:debug_rule) { ContextRules::DebugRule.new }
+          let(:explain_rule) { ContextRules::ExplainRule.new }
+
+          it 'elevates mailers and mailer_views to required for edit action with mailer topic' do
+            result = engine.build(entity, rule: edit_rule, topic: :mailer)
+            expect(result[:required]).to include('user_mailer.rb', 'users/welcome.html.erb')
+          end
+
+          it 'elevates mailers and mailer_views to required for debug action with mailer topic' do
+            result = engine.build(entity, rule: debug_rule, topic: :mailer)
+            expect(result[:required]).to include('user_mailer.rb', 'users/welcome.html.erb')
+          end
+
+          it 'elevates mailers and mailer_views to required for explain action with mailer topic' do
+            result = engine.build(entity, rule: explain_rule, topic: :mailer)
+            expect(result[:required]).to contain_exactly('users_controller.rb', 'user_mailer.rb', 'users/welcome.html.erb')
+          end
+
+          it 'omits mailers and mailer_views for explain action when topic is :general' do
+            result = engine.build(entity, rule: explain_rule, topic: :general)
+            expect(result[:required]).to contain_exactly('users_controller.rb')
+            expect(result[:required]).not_to include('user_mailer.rb')
+            expect(result[:required]).not_to include('users/welcome.html.erb')
+          end
+
+          it 'does not elevate mailers or mailer_views for nil, unknown, or other topics' do
+            result_nil = engine.build(entity, rule: explain_rule, topic: nil)
+            result_unknown = engine.build(entity, rule: explain_rule, topic: :unknown_topic)
+            result_job = engine.build(entity, rule: explain_rule, topic: :job)
+
+            expect(result_nil[:required]).to contain_exactly('users_controller.rb')
+            expect(result_unknown[:required]).to contain_exactly('users_controller.rb')
+            expect(result_job[:required]).not_to include('user_mailer.rb')
+            expect(result_job[:required]).not_to include('users/welcome.html.erb')
+          end
+
+          it 'does not include unrelated artifact types for mailer topic' do
+            result = engine.build(entity, rule: edit_rule, topic: :mailer)
+            expect(result[:required]).not_to include('user_serializer.rb')
+            expect(result[:required]).not_to include('user_presenter.rb')
+            expect(result[:required]).not_to include('user_job.rb')
+            expect(result[:required]).not_to include('user_worker.rb')
           end
         end
       end

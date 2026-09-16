@@ -53,9 +53,12 @@ class RequestAnalyzer
       /\b(?:the\s+)?\w+\s+(?:job|worker)(?:s)?\s+failing\b/i
     ],
     mailer: [
-      /\b\w*mailer(s)?\b/i,
+      /\b[A-Za-z0-9_:]+mailer(s)?\b/i,
+      /\b(?:email|mailer)\s+template(s)?\b/i,
       /\bemail\s+delivery\b/i,
-      /\bdeliver\s+mail\b/i
+      /\bdeliver\s+mail\b/i,
+      /\b(?:deliver_later|deliver_now)\b/i,
+      /\baction_?mailer\b/i
     ],
     service: [
       /\bservice\s+object(s)?\b/i,

@@ -6,7 +6,8 @@ class ContextEngine
   TOPIC_REQUIRED_CATEGORIES = {
     serialization: %i[serializers json_views],
     policy: %i[primary_policy],
-    job: %i[jobs]
+    job: %i[jobs],
+    mailer: %i[mailers mailer_views]
   }.freeze
 
   def initialize(project_index)

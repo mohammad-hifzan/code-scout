@@ -42,7 +42,13 @@ class ContextBuilder
         presenters(model_name, ref_categories[:presenters]),
 
       jobs:
-        jobs(model_name, ref_categories[:jobs])
+        jobs(model_name, ref_categories[:jobs]),
+
+      mailers:
+        mailers(model_name, ref_categories[:mailers]),
+
+      mailer_views:
+        mailer_views(model_name)
     }
   end
 
@@ -160,5 +166,23 @@ class ContextBuilder
     files.concat(ref_jobs) if ref_jobs
 
     files.uniq
+  end
+
+  def mailers(model_name, ref_mailers = nil)
+    files = []
+
+    # 1. Conventional ActionMailer (e.g. app/mailers/user_mailer.rb)
+    mailer_file = File.join(project_path, "app/mailers/#{model_name.underscore}_mailer.rb")
+    files << mailer_file if File.exist?(mailer_file)
+
+    # 2. Reference-derived mailers
+    files.concat(ref_mailers) if ref_mailers
+
+    files.uniq
+  end
+
+  def mailer_views(model_name)
+    pattern = File.join(project_path, "app/views/#{model_name.underscore}_mailer", "**", "*")
+    Dir.glob(pattern).select { |f| File.file?(f) }
   end
 end

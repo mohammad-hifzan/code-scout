@@ -223,6 +223,13 @@ RSpec.describe Pipeline::Pipeline do
       full_path
     end
 
+    def create_mailer_view_file(relative_path, content)
+      full_path = File.join(tmp_project_path, "app", "views", relative_path)
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
     def create_presenter_file(name, content)
       full_path = File.join(tmp_project_path, "app", "presenters", "#{name}.rb")
       FileUtils.mkdir_p(File.dirname(full_path))
@@ -595,6 +602,154 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).not_to include("app/mailers/user_mailer.rb")
       expect(prompt).not_to include("app/jobs/order_job.rb")
       expect(prompt).not_to include("app/workers/billing_worker.rb")
+    end
+
+    it "resolves Change UserMailer end-to-end and includes mailer and mailer views in required context" do
+      create_mailer_file(
+        "user_mailer",
+        <<~RUBY
+          class UserMailer < ApplicationMailer
+            def welcome_email(user_id)
+              @user = User.find(user_id)
+              mail(to: @user.email, subject: "Welcome")
+            end
+          end
+        RUBY
+      )
+      create_mailer_view_file("user_mailer/welcome.html.erb", "<h1>Welcome <%= @user.name %></h1>")
+      create_mailer_view_file("user_mailer/welcome.text.erb", "Welcome <%= @user.name %>")
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Change UserMailer")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/controllers/users_controller.rb")
+      expect(prompt).to include("app/mailers/user_mailer.rb")
+      expect(prompt).to include("app/views/user_mailer/welcome.html.erb")
+      expect(prompt).to include("app/views/user_mailer/welcome.text.erb")
+      expect(prompt).to include("UserMailer")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Change UserMailer")
+    end
+
+    it "resolves Why is UserMailer failing? end-to-end and includes mailer in required context" do
+      create_mailer_file(
+        "user_mailer",
+        <<~RUBY
+          class UserMailer < ApplicationMailer
+            def notify
+            end
+          end
+        RUBY
+      )
+      create_mailer_view_file("user_mailer/notify.html.erb", "<p>Notification</p>")
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Why is UserMailer failing?")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/controllers/users_controller.rb")
+      expect(prompt).to include("app/mailers/user_mailer.rb")
+      expect(prompt).to include("app/views/user_mailer/notify.html.erb")
+      expect(prompt).to include("UserMailer")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Why is UserMailer failing?")
+    end
+
+    it "resolves Change Admin::UserMailer end-to-end and isolates from root user mailers" do
+      create_model_file(
+        "admin/user",
+        <<~RUBY
+          module Admin
+            class User < ApplicationRecord
+            end
+          end
+        RUBY
+      )
+      create_controller_file(
+        "admin/users_controller",
+        <<~RUBY
+          module Admin
+            class UsersController < ApplicationController
+            end
+          end
+        RUBY
+      )
+      create_mailer_file(
+        "admin/user_mailer",
+        <<~RUBY
+          module Admin
+            class UserMailer < ApplicationMailer
+              def alert_admin(admin_id)
+                mail(to: "admin@example.com", subject: "Alert")
+              end
+            end
+          end
+        RUBY
+      )
+      create_mailer_view_file("admin/user_mailer/alert.html.erb", "<h1>Admin Alert</h1>")
+      create_mailer_file("user_mailer", "class UserMailer < ApplicationMailer; end")
+      create_mailer_view_file("user_mailer/welcome.html.erb", "<h1>Welcome</h1>")
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Change Admin::UserMailer")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/admin/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/controllers/admin/users_controller.rb")
+      expect(prompt).to include("app/mailers/admin/user_mailer.rb")
+      expect(prompt).to include("app/views/admin/user_mailer/alert.html.erb")
+      expect(prompt).to include("Admin::UserMailer")
+      expect(prompt).not_to include("app/mailers/user_mailer.rb")
+      expect(prompt).not_to include("app/views/user_mailer/welcome.html.erb")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Change Admin::UserMailer")
+    end
+
+    it "does not include mailers or mailer views for generic or non-mailer requests" do
+      create_mailer_file("user_mailer", "class UserMailer < ApplicationMailer; end")
+      create_mailer_view_file("user_mailer/welcome.html.erb", "<h1>Welcome</h1>")
+
+      pipeline = described_class.new(tmp_project_path)
+
+      ["Update User's email address", "Change User email preferences", "Add email uniqueness validation to User."].each do |req|
+        prompt = pipeline.run(req)
+        expect(prompt).to be_a(String)
+        expect(prompt).not_to include("app/mailers/user_mailer.rb")
+        expect(prompt).not_to include("app/views/user_mailer/welcome.html.erb")
+      end
+    end
+
+    it "isolates unrelated artifacts and does not pollute mailer context" do
+      create_mailer_file("user_mailer", "class UserMailer < ApplicationMailer; end")
+      create_mailer_view_file("user_mailer/welcome.html.erb", "<h1>Welcome</h1>")
+      create_mailer_file("order_mailer", "class OrderMailer < ApplicationMailer; end")
+      create_mailer_file("billing_mailer", "class BillingMailer < ApplicationMailer; end")
+      create_serializer_file("user_serializer", "class UserSerializer; end")
+      create_presenter_file("user_presenter", "class UserPresenter; end")
+      create_job_file("user_job", "class UserJob < ApplicationJob; end")
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Change UserMailer")
+
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/mailers/user_mailer.rb")
+      expect(prompt).to include("app/views/user_mailer/welcome.html.erb")
+
+      # Pollution checks:
+      expect(prompt).not_to include("app/mailers/order_mailer.rb")
+      expect(prompt).not_to include("app/mailers/billing_mailer.rb")
+      expect(prompt).not_to include("app/serializers/user_serializer.rb")
+      expect(prompt).not_to include("app/presenters/user_presenter.rb")
+      expect(prompt).not_to include("app/jobs/user_job.rb")
     end
   end
 end
