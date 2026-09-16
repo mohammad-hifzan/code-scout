@@ -7,7 +7,8 @@ class ContextEngine
     serialization: %i[serializers json_views],
     policy: %i[primary_policy],
     job: %i[jobs],
-    mailer: %i[mailers mailer_views]
+    mailer: %i[mailers mailer_views],
+    concern: %i[concerns]
   }.freeze
 
   def initialize(project_index)

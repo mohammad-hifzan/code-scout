@@ -493,6 +493,151 @@ RSpec.describe ContextBuilder do
           end
         end
       end
+
+      context 'with model concerns and mixins' do
+        let(:user_model_path) { '/fake/project/app/models/user.rb' }
+        let(:admin_user_model_path) { '/fake/project/app/models/admin/user.rb' }
+        let(:auditable_concern_path) { '/fake/project/app/models/concerns/auditable.rb' }
+        let(:searchable_concern_path) { '/fake/project/app/models/concerns/searchable.rb' }
+        let(:foo_bar_concern_path) { '/fake/project/app/models/concerns/foo/bar.rb' }
+        let(:admin_auditable_concern_path) { '/fake/project/app/models/concerns/admin/auditable.rb' }
+        let(:archivable_concern_path) { '/fake/project/app/models/concerns/archivable.rb' }
+
+        before do
+          allow(File).to receive(:exist?).with(user_model_path).and_return(true)
+          allow(File).to receive(:exist?).with(admin_user_model_path).and_return(true)
+        end
+
+        it 'discovers a simple concern from AST include' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  include Auditable\nend")
+          allow(File).to receive(:exist?).with(auditable_concern_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:concerns]).to contain_exactly(auditable_concern_path)
+        end
+
+        it 'discovers multiple separate AST include declarations' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  include Auditable\n  include Searchable\nend")
+          allow(File).to receive(:exist?).with(auditable_concern_path).and_return(true)
+          allow(File).to receive(:exist?).with(searchable_concern_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:concerns]).to contain_exactly(auditable_concern_path, searchable_concern_path)
+        end
+
+        it 'discovers namespaced concerns from AST include' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  include Foo::Bar\nend")
+          allow(File).to receive(:exist?).with(foo_bar_concern_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:concerns]).to contain_exactly(foo_bar_concern_path)
+        end
+
+        it 'discovers namespaced concerns for namespaced models' do
+          allow(File).to receive(:read).with(admin_user_model_path).and_return("class Admin::User < ApplicationRecord\n  include Admin::Auditable\nend")
+          allow(File).to receive(:exist?).with(admin_auditable_concern_path).and_return(true)
+
+          context = builder.build('Admin::User')
+          expect(context[:concerns]).to contain_exactly(admin_auditable_concern_path)
+        end
+
+        it 'discovers concerns from AST extend' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  extend Archivable\nend")
+          allow(File).to receive(:exist?).with(archivable_concern_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:concerns]).to contain_exactly(archivable_concern_path)
+        end
+
+        it 'silently omits concerns when the resolved concern file does not exist on disk' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  include MissingConcern\nend")
+          # File.exist? defaults to false
+
+          context = builder.build('User')
+          expect(context[:concerns]).to be_empty
+        end
+
+        it 'silently omits external framework/gem mixins that do not live in app/models/concerns' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  include Enumerable\n  include ActiveModel::Validations\nend")
+
+          context = builder.build('User')
+          expect(context[:concerns]).to be_empty
+        end
+
+        it 'safely fails closed on dynamic include expressions' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  include const_get(name)\nend")
+
+          context = builder.build('User')
+          expect(context[:concerns]).to be_empty
+        end
+
+        it 'discovers reference-derived model concerns' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\nend")
+          custom_concern = '/fake/project/app/models/concerns/user_tracking.rb'
+          allow(File).to receive(:exist?).with(custom_concern).and_return(true)
+
+          references = [custom_concern]
+          context = builder.build('User', references: references)
+          expect(context[:concerns]).to contain_exactly(custom_concern)
+        end
+
+        it 'strictly excludes controller concerns from model context' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\nend")
+          controller_concern = '/fake/project/app/controllers/concerns/authenticatable.rb'
+          allow(File).to receive(:exist?).with(controller_concern).and_return(true)
+
+          references = [controller_concern]
+          context = builder.build('User', references: references)
+          expect(context[:concerns]).to be_empty
+        end
+
+        it 'merges AST-derived and reference-derived concerns and deduplicates' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  include Auditable\nend")
+          allow(File).to receive(:exist?).with(auditable_concern_path).and_return(true)
+          custom_concern = '/fake/project/app/models/concerns/user_tracking.rb'
+          allow(File).to receive(:exist?).with(custom_concern).and_return(true)
+
+          references = [
+            auditable_concern_path, # duplicate of AST
+            custom_concern
+          ]
+          context = builder.build('User', references: references)
+          expect(context[:concerns]).to contain_exactly(
+            auditable_concern_path,
+            custom_concern
+          )
+        end
+
+        it 'isolates unrelated reference categories so they do not pollute concerns' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\nend")
+          references = [
+            '/fake/project/app/services/user_service.rb',
+            '/fake/project/app/serializers/user_serializer.rb',
+            '/fake/project/app/jobs/user_job.rb',
+            '/fake/project/app/mailers/user_mailer.rb',
+            '/fake/project/app/policies/other_policy.rb'
+          ]
+
+          context = builder.build('User', references: references)
+          expect(context[:concerns]).to be_empty
+        end
+
+        it 'returns empty array when model exists but has no concerns' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\nend")
+
+          context = builder.build('User')
+          expect(context[:concerns]).to be_empty
+        end
+
+        it 'does not perform broad repository scanning when references are not supplied' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\nend")
+          unrelated_concern = '/fake/project/app/models/concerns/unrelated.rb'
+          allow(File).to receive(:exist?).with(unrelated_concern).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:concerns]).to be_empty
+        end
+      end
     end
   end
 

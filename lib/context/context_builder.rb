@@ -1,5 +1,6 @@
 require "active_support/inflector"
 require_relative "../analysis/association_resolver"
+require_relative "../analysis/model_analyzer"
 require_relative "../reference_categorizer"
 
 class ContextBuilder
@@ -7,6 +8,7 @@ class ContextBuilder
     @project_map = project_map
     @project_path = project_path
     @association_resolver = AssociationResolver.new(project_map)
+    @model_analyzer = ModelAnalyzer.new
   end
 
   def build(model_name, references: nil)
@@ -48,7 +50,10 @@ class ContextBuilder
         mailers(model_name, ref_categories[:mailers]),
 
       mailer_views:
-        mailer_views(model_name)
+        mailer_views(model_name),
+
+      concerns:
+        concerns(model, model_name, ref_categories[:concerns])
     }
   end
 
@@ -184,5 +189,32 @@ class ContextBuilder
   def mailer_views(model_name)
     pattern = File.join(project_path, "app/views/#{model_name.underscore}_mailer", "**", "*")
     Dir.glob(pattern).select { |f| File.file?(f) }
+  end
+
+  def concerns(model, model_name, ref_concerns = nil)
+    files = []
+
+    # 1. Direct AST evidence (includes & extends)
+    if model && model[:path] && File.exist?(model[:path])
+      analysis = @model_analyzer.analyze(model[:path])
+      modules = (Array(analysis[:includes]) + Array(analysis[:extends])).uniq
+
+      modules.each do |mod|
+        next if mod.nil? || mod.empty?
+
+        concern_path = File.join(project_path, "app/models/concerns", "#{mod.underscore}.rb")
+        files << concern_path if File.exist?(concern_path)
+      end
+    end
+
+    # 2. Reference-derived model concerns (filtered strictly to app/models/concerns/)
+    if ref_concerns
+      model_ref_concerns = ref_concerns.select do |f|
+        f.to_s.include?("/app/models/concerns/") && File.exist?(f)
+      end
+      files.concat(model_ref_concerns)
+    end
+
+    files.uniq
   end
 end

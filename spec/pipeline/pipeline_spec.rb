@@ -237,6 +237,20 @@ RSpec.describe Pipeline::Pipeline do
       full_path
     end
 
+    def create_model_concern_file(name, content)
+      full_path = File.join(tmp_project_path, "app", "models", "concerns", "#{name}.rb")
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
+    def create_controller_concern_file(name, content)
+      full_path = File.join(tmp_project_path, "app", "controllers", "concerns", "#{name}.rb")
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
     before do
       create_model_file(
         "user",
@@ -750,6 +764,143 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).not_to include("app/serializers/user_serializer.rb")
       expect(prompt).not_to include("app/presenters/user_presenter.rb")
       expect(prompt).not_to include("app/jobs/user_job.rb")
+    end
+
+    it "resolves Change the User model concern end-to-end and includes concern in required context" do
+      create_model_file(
+        "user",
+        <<~RUBY
+          class User < ApplicationRecord
+            include Auditable
+          end
+        RUBY
+      )
+      create_model_concern_file(
+        "auditable",
+        <<~RUBY
+          module Auditable
+            extend ActiveSupport::Concern
+            included do
+              before_save :audit_changes
+            end
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Change the User model concern")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/controllers/users_controller.rb")
+      expect(prompt).to include("app/models/concerns/auditable.rb")
+      expect(prompt).to include("Auditable")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Change the User model concern")
+    end
+
+    it "resolves Why is the Auditable concern failing? end-to-end and includes concern context" do
+      create_model_concern_file(
+        "auditable",
+        <<~RUBY
+          module Auditable
+            extend ActiveSupport::Concern
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Why is the Auditable concern failing?")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("app/models/concerns/auditable.rb")
+      expect(prompt).to include("Auditable")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Why is the Auditable concern failing?")
+    end
+
+    it "resolves Update the User concern end-to-end and includes concern in required context" do
+      create_model_file(
+        "user",
+        <<~RUBY
+          class User < ApplicationRecord
+            include Auditable
+          end
+        RUBY
+      )
+      create_model_concern_file(
+        "auditable",
+        <<~RUBY
+          module Auditable
+            extend ActiveSupport::Concern
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Update the User concern")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/controllers/users_controller.rb")
+      expect(prompt).to include("app/models/concerns/auditable.rb")
+      expect(prompt).to include("Auditable")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Update the User concern")
+    end
+
+    it "does not include model concerns for non-concern requests" do
+      create_model_file(
+        "user",
+        <<~RUBY
+          class User < ApplicationRecord
+            include Auditable
+          end
+        RUBY
+      )
+      create_model_concern_file("auditable", "module Auditable; end")
+
+      pipeline = described_class.new(tmp_project_path)
+
+      ["Add a validation to User", "Update User's email address", "Include User in the response"].each do |req|
+        prompt = pipeline.run(req)
+        expect(prompt).to be_a(String)
+        expect(prompt).not_to include("app/models/concerns/auditable.rb")
+      end
+    end
+
+    it "isolates unrelated artifacts and controller concerns from model concern context" do
+      create_model_file(
+        "user",
+        <<~RUBY
+          class User < ApplicationRecord
+            include Auditable
+          end
+        RUBY
+      )
+      create_model_concern_file("auditable", "module Auditable; end")
+      create_controller_concern_file("authenticatable", "module Authenticatable; end")
+      create_model_concern_file("order_auditable", "module OrderAuditable; end")
+      create_serializer_file("user_serializer", "class UserSerializer; end")
+      create_job_file("user_job", "class UserJob < ApplicationJob; end")
+      create_mailer_file("user_mailer", "class UserMailer < ApplicationMailer; end")
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Change the User model concern")
+
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/models/concerns/auditable.rb")
+
+      # Pollution checks:
+      expect(prompt).not_to include("app/controllers/concerns/authenticatable.rb")
+      expect(prompt).not_to include("app/models/concerns/order_auditable.rb")
+      expect(prompt).not_to include("app/serializers/user_serializer.rb")
+      expect(prompt).not_to include("app/jobs/user_job.rb")
+      expect(prompt).not_to include("app/mailers/user_mailer.rb")
     end
   end
 end

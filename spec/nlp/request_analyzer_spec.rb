@@ -349,6 +349,31 @@ RSpec.describe RequestAnalyzer do
         expect(analyzer.analyze("Change email preferences for User")).to eq(action: :edit, entity: "User", topic: :general)
       end
 
+      it "evaluates concern classification accurately" do
+        expect(analyzer.analyze("Change the Auditable concern")).to eq(action: :edit, entity: nil, topic: :concern)
+        expect(analyzer.analyze("Fix the Auditable concern for User")).to eq(action: :edit, entity: "User", topic: :concern)
+        expect(analyzer.analyze("Update the User concern")).to eq(action: :edit, entity: "User", topic: :concern)
+        expect(analyzer.analyze("Change the User model concern")).to eq(action: :edit, entity: "User", topic: :concern)
+        expect(analyzer.analyze("Why is the Auditable concern failing?")).to eq(action: :debug, entity: nil, topic: :concern)
+        expect(analyzer.analyze("Implement ActiveSupport::Concern for User")).to eq(action: :edit, entity: "User", topic: :concern)
+        expect(analyzer.analyze("Fix the User model mixin")).to eq(action: :edit, entity: "User", topic: :concern)
+      end
+
+      it "avoids false positives for ordinary-language include, extend, mixin, and concern words" do
+        expect(analyzer.analyze("Include User in the response")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Include validation for User")).to eq(action: :edit, entity: "User", topic: :validation)
+        expect(analyzer.analyze("Extend the User API")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Mix in authentication")).to eq(action: :edit, entity: nil, topic: :general)
+        expect(analyzer.analyze("Include caching")).to eq(action: :edit, entity: nil, topic: :general)
+        expect(analyzer.analyze("What does User include?")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("What does User extend?")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Add a validation to User")).to eq(action: :edit, entity: "User", topic: :validation)
+        expect(analyzer.analyze("Address security concern in User")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Discuss privacy concern for User")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("This is a major performance concern for User")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Address User latency concerns")).to eq(action: :edit, entity: "User", topic: :general)
+      end
+
       it "evaluates service classification and avoids false positives" do
         expect(analyzer.analyze("Change UserService")).to eq(action: :edit, entity: "User", topic: :service)
         expect(analyzer.analyze("Why is the User service failing?")).to eq(action: :debug, entity: "User", topic: :service)

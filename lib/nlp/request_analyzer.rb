@@ -71,6 +71,13 @@ class RequestAnalyzer
       /\bauthoriz(e|ation)\b/i,
       /\bpundit\b/i
     ],
+    concern: [
+      /\b[A-Za-z0-9_:]+concern(s)?\b/i,
+      /\bthe\s+[A-Za-z0-9_:]+\s+concern\b/i,
+      /\bmodel\s+concern(s)?\b/i,
+      /\b(?:model\s+)?mixin(s)?\b/i,
+      /\bactive_?support(?:::|\s+)concern\b/i
+    ],
     association: [
       /\b(association|associations|relationship|relationships)\b/i,
       /\b(belongs_to|has_many|has_one|has_and_belongs_to_many)\b/i
