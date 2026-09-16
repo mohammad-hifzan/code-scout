@@ -276,8 +276,42 @@ RSpec.describe RequestAnalyzer do
 
       it "evaluates job classification accurately" do
         expect(analyzer.analyze("Change UserJob")).to eq(action: :edit, entity: "User", topic: :job)
+        expect(analyzer.analyze("Change UserWorker")).to eq(action: :edit, entity: "User", topic: :job)
+        expect(analyzer.analyze("Why is UserJob failing?")).to eq(action: :debug, entity: "User", topic: :job)
+        expect(analyzer.analyze("Why is UserWorker failing?")).to eq(action: :debug, entity: "User", topic: :job)
         expect(analyzer.analyze("Why is the User job failing?")).to eq(action: :debug, entity: "User", topic: :job)
-        expect(analyzer.analyze("Update the background job for User")).to eq(action: :edit, entity: "User", topic: :job)
+        expect(analyzer.analyze("Why is the User worker failing?")).to eq(action: :debug, entity: "User", topic: :job)
+        expect(analyzer.analyze("User job is failing")).to eq(action: :debug, entity: "User", topic: :job)
+        expect(analyzer.analyze("User worker is failing")).to eq(action: :debug, entity: "User", topic: :job)
+        expect(analyzer.analyze("Update background job for User")).to eq(action: :edit, entity: "User", topic: :job)
+        expect(analyzer.analyze("Add a background worker for User")).to eq(action: :edit, entity: "User", topic: :job)
+        expect(analyzer.analyze("Sidekiq User job")).to eq(action: :edit, entity: "User", topic: :job)
+        expect(analyzer.analyze("Sidekiq UserJob")).to eq(action: :edit, entity: "User", topic: :job)
+        expect(analyzer.analyze("enqueue UserJob")).to eq(action: :edit, entity: "User", topic: :job)
+        expect(analyzer.analyze("perform_later UserJob")).to eq(action: :edit, entity: "User", topic: :job)
+        expect(analyzer.analyze("perform_async UserJob")).to eq(action: :edit, entity: "User", topic: :job)
+      end
+
+      it "avoids false positives for ordinary-language job, worker, perform, and enqueue phrases" do
+        expect(analyzer.analyze("Perform User migration")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Perform User validation")).to eq(action: :edit, entity: "User", topic: :validation)
+        expect(analyzer.analyze("Perform the requested update")).to eq(action: :edit, entity: nil, topic: :general)
+        expect(analyzer.analyze("Perform task for User")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Perform an action for User")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Perform User cleanup")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Enqueue User notification")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Update User job title")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Update User's job title")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Change User job preferences")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Update User's job history")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Discuss User job application")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Improve worker productivity")).to eq(action: :edit, entity: nil, topic: :general)
+        expect(analyzer.analyze("Change worker responsibilities")).to eq(action: :edit, entity: nil, topic: :general)
+        expect(analyzer.analyze("Change worker responsibilities for User")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Update worker documentation")).to eq(action: :edit, entity: nil, topic: :general)
+        expect(analyzer.analyze("Update User's employment information")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Change user workflow")).to eq(action: :edit, entity: "User", topic: :general)
+        expect(analyzer.analyze("Update user background processing")).to eq(action: :edit, entity: "User", topic: :general)
       end
 
       it "evaluates mailer classification and avoids false positives" do
@@ -343,6 +377,19 @@ RSpec.describe RequestAnalyzer do
         )
       end
 
+      it "resolves UserWorker to User" do
+        expect(analyzer.analyze("Change UserWorker")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :job
+        )
+        expect(analyzer.analyze("Why is UserWorker failing?")).to eq(
+          action: :debug,
+          entity: "User",
+          topic: :job
+        )
+      end
+
       it "resolves UserMailer to User" do
         expect(analyzer.analyze("Change UserMailer")).to eq(
           action: :edit,
@@ -371,6 +418,16 @@ RSpec.describe RequestAnalyzer do
           entity: "Billing::Invoice",
           topic: :policy
         )
+        expect(scoped_analyzer.analyze("Change Admin::UserJob")).to eq(
+          action: :edit,
+          entity: "Admin::User",
+          topic: :job
+        )
+        expect(scoped_analyzer.analyze("Change Admin::UserWorker")).to eq(
+          action: :edit,
+          entity: "Admin::User",
+          topic: :job
+        )
       end
 
       it "preserves standard entity resolution for base models" do
@@ -390,6 +447,11 @@ RSpec.describe RequestAnalyzer do
           action: :edit,
           entity: nil,
           topic: :policy
+        )
+        expect(analyzer.analyze("Change SomeRandomWorker")).to eq(
+          action: :edit,
+          entity: nil,
+          topic: :job
         )
       end
 
@@ -413,6 +475,11 @@ RSpec.describe RequestAnalyzer do
 
       it "handles multiple compound artifacts without guessing" do
         expect(analyzer.analyze("Change UserSerializer and UserPolicy")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :general
+        )
+        expect(analyzer.analyze("Change UserWorker and UserSerializer")).to eq(
           action: :edit,
           entity: "User",
           topic: :general

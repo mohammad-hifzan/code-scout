@@ -375,11 +375,12 @@ RSpec.describe ContextEngine do
             primary_views: ['users/index.html.erb'],
             serializers: ['user_serializer.rb', 'post_serializer.rb'],
             json_views: ['users/show.json.jbuilder'],
-            presenters: ['user_presenter.rb']
+            presenters: ['user_presenter.rb'],
+            jobs: ['user_job.rb', 'user_worker.rb']
           }
         end
 
-        it 'does not include serializers, json views, or presenters when topic is :general' do
+        it 'does not include serializers, json views, presenters, or jobs when topic is :general' do
           allow(rule).to receive(:include_primary?).and_return(true)
           allow(rule).to receive(:include_controller?).and_return(true)
 
@@ -388,6 +389,8 @@ RSpec.describe ContextEngine do
           expect(result[:required]).not_to include('user_serializer.rb')
           expect(result[:required]).not_to include('users/show.json.jbuilder')
           expect(result[:required]).not_to include('user_presenter.rb')
+          expect(result[:required]).not_to include('user_job.rb')
+          expect(result[:required]).not_to include('user_worker.rb')
         end
 
         it 'elevates serializers and json views into required files when topic is :serialization' do
@@ -401,6 +404,21 @@ RSpec.describe ContextEngine do
             'post_serializer.rb',
             'users/show.json.jbuilder'
           )
+          expect(result[:required]).not_to include('user_job.rb')
+        end
+
+        it 'elevates jobs into required files when topic is :job' do
+          allow(rule).to receive(:include_primary?).and_return(true)
+          allow(rule).to receive(:include_controller?).and_return(true)
+
+          result = engine.build(entity, rule: rule, topic: :job)
+          expect(result[:required]).to contain_exactly(
+            'users_controller.rb',
+            'user_job.rb',
+            'user_worker.rb'
+          )
+          expect(result[:required]).not_to include('user_serializer.rb')
+          expect(result[:required]).not_to include('user_presenter.rb')
         end
 
         it 'does not include unrelated artifact types for serialization topic' do
@@ -496,6 +514,42 @@ RSpec.describe ContextEngine do
           end
 
           it 'does not elevate policy for nil or unknown topic with explain rule' do
+            result_nil = engine.build(entity, rule: explain_rule, topic: nil)
+            result_unknown = engine.build(entity, rule: explain_rule, topic: :unknown_topic)
+
+            expect(result_nil[:required]).to contain_exactly('users_controller.rb')
+            expect(result_unknown[:required]).to contain_exactly('users_controller.rb')
+          end
+        end
+
+        context 'with job topic selection' do
+          let(:edit_rule) { ContextRules::EditModelRule.new }
+          let(:debug_rule) { ContextRules::DebugRule.new }
+          let(:explain_rule) { ContextRules::ExplainRule.new }
+
+          it 'elevates jobs to required for edit action with job topic' do
+            result = engine.build(entity, rule: edit_rule, topic: :job)
+            expect(result[:required]).to include('user_job.rb', 'user_worker.rb')
+          end
+
+          it 'elevates jobs to required for debug action with job topic' do
+            result = engine.build(entity, rule: debug_rule, topic: :job)
+            expect(result[:required]).to include('user_job.rb', 'user_worker.rb')
+          end
+
+          it 'elevates jobs to required for explain action with job topic' do
+            result = engine.build(entity, rule: explain_rule, topic: :job)
+            expect(result[:required]).to contain_exactly('users_controller.rb', 'user_job.rb', 'user_worker.rb')
+          end
+
+          it 'omits jobs for explain action when topic is :general' do
+            result = engine.build(entity, rule: explain_rule, topic: :general)
+            expect(result[:required]).to contain_exactly('users_controller.rb')
+            expect(result[:required]).not_to include('user_job.rb')
+            expect(result[:required]).not_to include('user_worker.rb')
+          end
+
+          it 'does not elevate jobs for nil or unknown topic with explain rule' do
             result_nil = engine.build(entity, rule: explain_rule, topic: nil)
             result_unknown = engine.build(entity, rule: explain_rule, topic: :unknown_topic)
 

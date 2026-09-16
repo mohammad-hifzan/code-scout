@@ -39,7 +39,10 @@ class ContextBuilder
         json_views(model_name),
 
       presenters:
-        presenters(model_name, ref_categories[:presenters])
+        presenters(model_name, ref_categories[:presenters]),
+
+      jobs:
+        jobs(model_name, ref_categories[:jobs])
     }
   end
 
@@ -139,6 +142,23 @@ class ContextBuilder
     presenter_file = File.join(project_path, "app/presenters/#{model_name.underscore}_presenter.rb")
     files = File.exist?(presenter_file) ? [presenter_file] : []
     files.concat(ref_presenters) if ref_presenters
+    files.uniq
+  end
+
+  def jobs(model_name, ref_jobs = nil)
+    files = []
+
+    # 1. Conventional ActiveJob (e.g. app/jobs/user_job.rb)
+    job_file = File.join(project_path, "app/jobs/#{model_name.underscore}_job.rb")
+    files << job_file if File.exist?(job_file)
+
+    # 2. Conventional Worker (e.g. app/workers/user_worker.rb)
+    worker_file = File.join(project_path, "app/workers/#{model_name.underscore}_worker.rb")
+    files << worker_file if File.exist?(worker_file)
+
+    # 3. Reference-derived jobs
+    files.concat(ref_jobs) if ref_jobs
+
     files.uniq
   end
 end

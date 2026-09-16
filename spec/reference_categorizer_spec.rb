@@ -59,6 +59,20 @@ RSpec.describe ReferenceCategorizer do
       expect(result[:others]).to be_empty
     end
 
+    it 'categorizes workers as jobs' do
+      files = [
+        '/app/workers/user_worker.rb',
+        '/app/workers/admin/user_worker.rb'
+      ]
+      result = categorizer.categorize(files)
+
+      expect(result[:jobs]).to contain_exactly(
+        '/app/workers/user_worker.rb',
+        '/app/workers/admin/user_worker.rb'
+      )
+      expect(result[:others]).to be_empty
+    end
+
     it 'categorizes presenters correctly' do
       files = ['/app/presenters/user_card_presenter.rb']
       result = categorizer.categorize(files)

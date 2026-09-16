@@ -202,6 +202,34 @@ RSpec.describe Pipeline::Pipeline do
       full_path
     end
 
+    def create_job_file(name, content)
+      full_path = File.join(tmp_project_path, "app", "jobs", "#{name}.rb")
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
+    def create_worker_file(name, content)
+      full_path = File.join(tmp_project_path, "app", "workers", "#{name}.rb")
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
+    def create_mailer_file(name, content)
+      full_path = File.join(tmp_project_path, "app", "mailers", "#{name}.rb")
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
+    def create_presenter_file(name, content)
+      full_path = File.join(tmp_project_path, "app", "presenters", "#{name}.rb")
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
     before do
       create_model_file(
         "user",
@@ -383,6 +411,190 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("UserPolicy")
       expect(prompt).to include("## TASK")
       expect(prompt).to include("Explain User authorization")
+    end
+
+    it "resolves Change UserJob end-to-end and includes job in required context" do
+      create_job_file(
+        "user_job",
+        <<~RUBY
+          class UserJob < ApplicationJob
+            def perform(user_id)
+              User.find(user_id).process!
+            end
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Change UserJob")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/controllers/users_controller.rb")
+      expect(prompt).to include("app/jobs/user_job.rb")
+      expect(prompt).to include("UserJob")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Change UserJob")
+    end
+
+    it "resolves Why is UserWorker failing? end-to-end and includes worker in required context" do
+      create_worker_file(
+        "user_worker",
+        <<~RUBY
+          class UserWorker
+            include Sidekiq::Worker
+            def perform(user_id)
+              User.find(user_id).sync!
+            end
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Why is UserWorker failing?")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/controllers/users_controller.rb")
+      expect(prompt).to include("app/workers/user_worker.rb")
+      expect(prompt).to include("UserWorker")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Why is UserWorker failing?")
+    end
+
+    it "resolves Change Admin::UserJob end-to-end and includes namespaced job in required context" do
+      create_model_file(
+        "admin/user",
+        <<~RUBY
+          module Admin
+            class User < ApplicationRecord
+            end
+          end
+        RUBY
+      )
+      create_controller_file(
+        "admin/users_controller",
+        <<~RUBY
+          module Admin
+            class UsersController < ApplicationController
+            end
+          end
+        RUBY
+      )
+      create_job_file(
+        "admin/user_job",
+        <<~RUBY
+          module Admin
+            class UserJob < ApplicationJob
+              def perform(user_id)
+                Admin::User.find(user_id).audit!
+              end
+            end
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Change Admin::UserJob")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/admin/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/controllers/admin/users_controller.rb")
+      expect(prompt).to include("app/jobs/admin/user_job.rb")
+      expect(prompt).to include("Admin::UserJob")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Change Admin::UserJob")
+    end
+
+    it "resolves Change Admin::UserWorker end-to-end and isolates from root user artifacts" do
+      create_model_file(
+        "admin/user",
+        <<~RUBY
+          module Admin
+            class User < ApplicationRecord
+            end
+          end
+        RUBY
+      )
+      create_controller_file(
+        "admin/users_controller",
+        <<~RUBY
+          module Admin
+            class UsersController < ApplicationController
+            end
+          end
+        RUBY
+      )
+      create_worker_file(
+        "admin/user_worker",
+        <<~RUBY
+          module Admin
+            class UserWorker
+              include Sidekiq::Worker
+              def perform(user_id)
+                Admin::User.find(user_id).sync!
+              end
+            end
+          end
+        RUBY
+      )
+      create_job_file("user_job", "class UserJob < ApplicationJob; end")
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Change Admin::UserWorker")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/admin/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/controllers/admin/users_controller.rb")
+      expect(prompt).to include("app/workers/admin/user_worker.rb")
+      expect(prompt).to include("Admin::UserWorker")
+      expect(prompt).not_to include("app/jobs/user_job.rb")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Change Admin::UserWorker")
+    end
+
+    it "does not include jobs or workers for generic model requests" do
+      create_job_file("user_job", "class UserJob < ApplicationJob; end")
+      create_worker_file("user_worker", "class UserWorker; include Sidekiq::Worker; end")
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Add a validation to User.")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).not_to include("app/jobs/user_job.rb")
+      expect(prompt).not_to include("app/workers/user_worker.rb")
+    end
+
+    it "isolates unrelated artifacts and does not pollute job context" do
+      create_job_file("user_job", "class UserJob < ApplicationJob; end")
+      create_worker_file("user_worker", "class UserWorker; include Sidekiq::Worker; end")
+      create_serializer_file("user_serializer", "class UserSerializer; end")
+      create_presenter_file("user_presenter", "class UserPresenter; end")
+      create_mailer_file("user_mailer", "class UserMailer < ApplicationMailer; end")
+      create_job_file("order_job", "class OrderJob < ApplicationJob; end")
+      create_worker_file("billing_worker", "class BillingWorker; include Sidekiq::Worker; end")
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Change UserJob")
+
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/jobs/user_job.rb")
+      expect(prompt).to include("app/workers/user_worker.rb")
+
+      # Pollution checks:
+      expect(prompt).not_to include("app/serializers/user_serializer.rb")
+      expect(prompt).not_to include("app/presenters/user_presenter.rb")
+      expect(prompt).not_to include("app/mailers/user_mailer.rb")
+      expect(prompt).not_to include("app/jobs/order_job.rb")
+      expect(prompt).not_to include("app/workers/billing_worker.rb")
     end
   end
 end

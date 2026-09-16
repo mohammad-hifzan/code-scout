@@ -44,11 +44,13 @@ class RequestAnalyzer
       /\bjson(\s+representation)?\b/i
     ],
     job: [
-      /\b\w*job(s)?\b/i,
-      /\b\w*worker(s)?\b/i,
-      /\bsidekiq\b/i,
-      /\bperform\b/i,
-      /\bbackground\s+job(s)?\b/i
+      /\b[A-Za-z0-9_:]+(?:job|worker)(?:s)?\b/i,
+      /\bbackground\s+(?:job|worker)(?:s)?\b/i,
+      /\b(?:sidekiq|active_?job|resque|shoryuken)\b/i,
+      /\b(?:perform_later|perform_async|perform_now|perform_in|perform_at)\b/i,
+      /\bperform\s+method\b/i,
+      /\b\w+\s+(?:job|worker)(?:s)?\s+(?:is|are|failing|failed|broken|error|failure)\b/i,
+      /\b(?:the\s+)?\w+\s+(?:job|worker)(?:s)?\s+failing\b/i
     ],
     mailer: [
       /\b\w*mailer(s)?\b/i,
@@ -76,6 +78,7 @@ class RequestAnalyzer
     serializer
     policy
     job
+    worker
     mailer
     service
   ].freeze

@@ -295,6 +295,92 @@ RSpec.describe ContextBuilder do
           end
         end
       end
+
+      context 'with background execution artifacts (jobs and workers)' do
+        let(:user_job_path) { '/fake/project/app/jobs/user_job.rb' }
+        let(:user_worker_path) { '/fake/project/app/workers/user_worker.rb' }
+        let(:admin_user_job_path) { '/fake/project/app/jobs/admin/user_job.rb' }
+        let(:admin_user_worker_path) { '/fake/project/app/workers/admin/user_worker.rb' }
+
+        it 'discovers conventional ActiveJob file' do
+          allow(File).to receive(:exist?).with(user_job_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:jobs]).to contain_exactly(user_job_path)
+        end
+
+        it 'discovers conventional Worker file' do
+          allow(File).to receive(:exist?).with(user_worker_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:jobs]).to contain_exactly(user_worker_path)
+        end
+
+        it 'discovers both ActiveJob and Worker files when both exist' do
+          allow(File).to receive(:exist?).with(user_job_path).and_return(true)
+          allow(File).to receive(:exist?).with(user_worker_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:jobs]).to contain_exactly(user_job_path, user_worker_path)
+        end
+
+        it 'discovers namespaced jobs and workers' do
+          allow(File).to receive(:exist?).with(admin_user_job_path).and_return(true)
+          allow(File).to receive(:exist?).with(admin_user_worker_path).and_return(true)
+
+          context = builder.build('Admin::User')
+          expect(context[:jobs]).to contain_exactly(admin_user_job_path, admin_user_worker_path)
+        end
+
+        it 'returns an empty array when no job or worker exists' do
+          context = builder.build('Person')
+          expect(context[:jobs]).to be_empty
+        end
+
+        context 'with reference-derived job expansion' do
+          let(:custom_job_path) { '/fake/project/app/jobs/user_sync_job.rb' }
+          let(:custom_worker_path) { '/fake/project/app/workers/user_export_worker.rb' }
+
+          it 'expands jobs with reference candidates and deduplicates' do
+            allow(File).to receive(:exist?).with(user_job_path).and_return(true)
+            references = [
+              custom_job_path,
+              custom_worker_path,
+              user_job_path # duplicate of conventional
+            ]
+
+            context = builder.build('User', references: references)
+            expect(context[:jobs]).to contain_exactly(
+              user_job_path,
+              custom_job_path,
+              custom_worker_path
+            )
+          end
+
+          it 'isolates unrelated reference categories so they do not pollute jobs' do
+            references = [
+              '/fake/project/app/services/user_service.rb',
+              '/fake/project/app/serializers/user_serializer.rb',
+              '/fake/project/app/mailers/user_mailer.rb',
+              '/fake/project/app/policies/other_policy.rb'
+            ]
+
+            context = builder.build('User', references: references)
+            expect(context[:jobs]).to be_empty
+          end
+
+          it 'does not discover unrelated model jobs merely because they exist' do
+            order_job = '/fake/project/app/jobs/order_job.rb'
+            billing_worker = '/fake/project/app/workers/billing_worker.rb'
+            allow(File).to receive(:exist?).with(order_job).and_return(true)
+            allow(File).to receive(:exist?).with(billing_worker).and_return(true)
+
+            context = builder.build('User')
+            expect(context[:jobs]).not_to include(order_job)
+            expect(context[:jobs]).not_to include(billing_worker)
+          end
+        end
+      end
     end
   end
 

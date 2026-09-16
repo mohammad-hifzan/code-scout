@@ -39,7 +39,8 @@ class ReferenceCategorizer
         result[:policies] << file
       when %r{/app/services/}
         result[:services] << file
-      when %r{/app/jobs/}
+      when %r{/app/jobs/},
+           %r{/app/workers/}
         result[:jobs] << file
       when %r{/app/mailers/}
         result[:mailers] << file
