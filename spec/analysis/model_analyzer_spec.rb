@@ -35,6 +35,7 @@ RSpec.describe ModelAnalyzer do
         expect(result[:enums]).to be_empty
         expect(result[:includes]).to be_empty
         expect(result[:extends]).to be_empty
+        expect(result[:validators]).to be_empty
       end
     end
 
@@ -251,6 +252,127 @@ RSpec.describe ModelAnalyzer do
         result = analyzer.analyze(path)
         expect(result[:includes]).to contain_exactly('Auditable', 'Namespace::Concerns::Qualifiable')
         expect(result[:extends]).to contain_exactly('ClassMethods')
+      end
+    end
+
+    context 'with validators' do
+      it 'extracts validator constant from validates_with' do
+        path = create_model_file('user', <<~RUBY)
+          class User < ApplicationRecord
+            validates_with SomeValidator
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:validators]).to contain_exactly('SomeValidator')
+      end
+
+      it 'extracts namespaced validator constant from validates_with' do
+        path = create_model_file('admin_user', <<~RUBY)
+          class AdminUser < ApplicationRecord
+            validates_with Admin::SomeValidator
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:validators]).to contain_exactly('Admin::SomeValidator')
+      end
+
+      it 'extracts multiple validator constants from validates_with' do
+        path = create_model_file('user', <<~RUBY)
+          class User < ApplicationRecord
+            validates_with ValidatorA, ValidatorB
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:validators]).to contain_exactly('ValidatorA', 'ValidatorB')
+      end
+
+      it 'fails closed on dynamic validates_with expressions' do
+        path = create_model_file('user', <<~RUBY)
+          class User < ApplicationRecord
+            validates_with const_get("DynamicValidator")
+            validates_with self.class.validator
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:validators]).to be_empty
+      end
+
+      it 'extracts custom validator from validates with custom option' do
+        path = create_model_file('user', <<~RUBY)
+          class User < ApplicationRecord
+            validates :email, email_domain: true
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:validators]).to contain_exactly('EmailDomainValidator')
+      end
+
+      it 'extracts custom validator with option hash' do
+        path = create_model_file('user', <<~RUBY)
+          class User < ApplicationRecord
+            validates :email, email_domain: { mode: :strict }
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:validators]).to contain_exactly('EmailDomainValidator')
+      end
+
+      it 'excludes built-in validation options' do
+        path = create_model_file('user', <<~RUBY)
+          class User < ApplicationRecord
+            validates :email,
+                      presence: true,
+                      uniqueness: true,
+                      format: { with: /\\A\\w+@\\w+\\z/ },
+                      allow_nil: true,
+                      on: :create
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:validators]).to be_empty
+      end
+
+      it 'ignores custom validator key when value is false' do
+        path = create_model_file('user', <<~RUBY)
+          class User < ApplicationRecord
+            validates :email, email_domain: false
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:validators]).to be_empty
+      end
+
+      it 'preserves attribute validations in :validations while extracting custom validators' do
+        path = create_model_file('user', <<~RUBY)
+          class User < ApplicationRecord
+            validates :email, :secondary_email, email_domain: true, presence: true
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:validations]).to contain_exactly('email', 'secondary_email')
+        expect(result[:validators]).to contain_exactly('EmailDomainValidator')
+      end
+
+      it 'deduplicates repeated validator declarations' do
+        path = create_model_file('user', <<~RUBY)
+          class User < ApplicationRecord
+            validates :email, email_domain: true
+            validates :backup_email, email_domain: true
+            validates_with EmailDomainValidator
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:validators]).to contain_exactly('EmailDomainValidator')
+      end
+
+      it 'returns empty array when model has no validators' do
+        path = create_model_file('user', <<~RUBY)
+          class User < ApplicationRecord
+            validates :name, presence: true
+          end
+        RUBY
+        result = analyzer.analyze(path)
+        expect(result[:validators]).to be_empty
       end
     end
 

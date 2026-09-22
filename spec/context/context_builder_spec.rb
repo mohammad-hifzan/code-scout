@@ -638,6 +638,106 @@ RSpec.describe ContextBuilder do
           expect(context[:concerns]).to be_empty
         end
       end
+
+      context 'with custom validators' do
+        let(:user_model_path) { '/fake/project/app/models/user.rb' }
+        let(:admin_user_model_path) { '/fake/project/app/models/admin/user.rb' }
+        let(:email_domain_validator_path) { '/fake/project/app/validators/email_domain_validator.rb' }
+        let(:some_validator_path) { '/fake/project/app/validators/some_validator.rb' }
+        let(:admin_some_validator_path) { '/fake/project/app/validators/admin/some_validator.rb' }
+
+        before do
+          allow(File).to receive(:exist?).with(user_model_path).and_return(true)
+          allow(File).to receive(:exist?).with(admin_user_model_path).and_return(true)
+        end
+
+        it 'discovers a custom validator from AST validates with custom option' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  validates :email, email_domain: true\nend")
+          allow(File).to receive(:exist?).with(email_domain_validator_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:validators]).to contain_exactly(email_domain_validator_path)
+        end
+
+        it 'discovers a validator from AST validates_with' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  validates_with SomeValidator\nend")
+          allow(File).to receive(:exist?).with(some_validator_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:validators]).to contain_exactly(some_validator_path)
+        end
+
+        it 'discovers namespaced validator from AST validates_with' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  validates_with Admin::SomeValidator\nend")
+          allow(File).to receive(:exist?).with(admin_some_validator_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:validators]).to contain_exactly(admin_some_validator_path)
+        end
+
+        it 'silently omits validators when the resolved file does not exist on disk' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  validates_with MissingValidator\nend")
+
+          context = builder.build('User')
+          expect(context[:validators]).to be_empty
+        end
+
+        it 'strictly excludes validator files located outside app/validators/' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  validates_with ExternalValidator\nend")
+          lib_validator = '/fake/project/lib/validators/external_validator.rb'
+          allow(File).to receive(:exist?).with(lib_validator).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:validators]).to be_empty
+        end
+
+        it 'strictly rejects validation keys attempting path traversal outside app/validators/' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  validates :email, \"../../lib/evil\": true\nend")
+          evil_path = File.expand_path('/fake/project/lib/evil_validator.rb')
+          allow(File).to receive(:exist?).with(evil_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:validators]).to be_empty
+
+          # Also test hash-rocket syntax
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  validates :email, :\"../../lib/evil\" => true\nend")
+          context_rocket = builder.build('User')
+          expect(context_rocket[:validators]).to be_empty
+        end
+
+        it 'discovers namespaced validator from AST validates_with for Admin::EmailDomainValidator' do
+          admin_email_domain_validator_path = '/fake/project/app/validators/admin/email_domain_validator.rb'
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  validates_with Admin::EmailDomainValidator\nend")
+          allow(File).to receive(:exist?).with(admin_email_domain_validator_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:validators]).to contain_exactly(admin_email_domain_validator_path)
+        end
+
+        it 'does not discover built-in validation options as validator files' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  validates :email, presence: true, uniqueness: true\nend")
+          presence_validator = '/fake/project/app/validators/presence_validator.rb'
+          allow(File).to receive(:exist?).with(presence_validator).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:validators]).to be_empty
+        end
+
+        it 'deduplicates multiple references to the same validator' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  validates :email, email_domain: true\n  validates :backup_email, email_domain: true\nend")
+          allow(File).to receive(:exist?).with(email_domain_validator_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:validators]).to contain_exactly(email_domain_validator_path)
+        end
+
+        it 'returns empty array when model exists but has no validators' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\nend")
+
+          context = builder.build('User')
+          expect(context[:validators]).to be_empty
+        end
+      end
     end
   end
 

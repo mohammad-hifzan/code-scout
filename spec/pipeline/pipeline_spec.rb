@@ -251,6 +251,13 @@ RSpec.describe Pipeline::Pipeline do
       full_path
     end
 
+    def create_validator_file(name, content)
+      full_path = File.join(tmp_project_path, "app", "validators", "#{name}.rb")
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
     before do
       create_model_file(
         "user",
@@ -901,6 +908,120 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).not_to include("app/serializers/user_serializer.rb")
       expect(prompt).not_to include("app/jobs/user_job.rb")
       expect(prompt).not_to include("app/mailers/user_mailer.rb")
+    end
+
+    it "resolves Why is User validation failing? end-to-end and includes custom validator in required context" do
+      create_model_file(
+        "user",
+        <<~RUBY
+          class User < ApplicationRecord
+            validates :email, email_domain: true
+          end
+        RUBY
+      )
+      create_validator_file(
+        "email_domain_validator",
+        <<~RUBY
+          class EmailDomainValidator < ActiveModel::EachValidator
+            def validate_each(record, attribute, value)
+            end
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Why is User validation failing?")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/validators/email_domain_validator.rb")
+      expect(prompt).to include("EmailDomainValidator")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Why is User validation failing?")
+    end
+
+    it "resolves Add email validation to User end-to-end with validates_with validator" do
+      create_model_file(
+        "user",
+        <<~RUBY
+          class User < ApplicationRecord
+            validates_with CustomValidator
+          end
+        RUBY
+      )
+      create_validator_file(
+        "custom_validator",
+        <<~RUBY
+          class CustomValidator < ActiveModel::Validator
+            def validate(record)
+            end
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Add email validation to User")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/validators/custom_validator.rb")
+      expect(prompt).to include("CustomValidator")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Add email validation to User")
+    end
+
+    it "does not include custom validators for non-validation requests" do
+      create_model_file(
+        "user",
+        <<~RUBY
+          class User < ApplicationRecord
+            validates :email, email_domain: true
+          end
+        RUBY
+      )
+      create_validator_file("email_domain_validator", "class EmailDomainValidator < ActiveModel::EachValidator; end")
+
+      pipeline = described_class.new(tmp_project_path)
+
+      ["Explain User", "Show User serializer", "Change UserJob"].each do |req|
+        prompt = pipeline.run(req)
+        expect(prompt).to be_a(String)
+        expect(prompt).not_to include("app/validators/email_domain_validator.rb")
+      end
+    end
+
+    it "isolates unrelated artifacts and unreferenced validators from custom validator context" do
+      create_model_file(
+        "user",
+        <<~RUBY
+          class User < ApplicationRecord
+            validates :email, email_domain: true
+          end
+        RUBY
+      )
+      create_validator_file("email_domain_validator", "class EmailDomainValidator < ActiveModel::EachValidator; end")
+      create_validator_file("unrelated_validator", "class UnrelatedValidator < ActiveModel::Validator; end")
+      create_serializer_file("user_serializer", "class UserSerializer; end")
+      create_job_file("user_job", "class UserJob < ApplicationJob; end")
+      create_mailer_file("user_mailer", "class UserMailer < ApplicationMailer; end")
+      create_model_concern_file("auditable", "module Auditable; end")
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Why is User validation failing?")
+
+      expect(prompt).to include("## REQUIRED")
+      expect(prompt).to include("app/validators/email_domain_validator.rb")
+
+      # Pollution checks:
+      expect(prompt).not_to include("app/validators/unrelated_validator.rb")
+      expect(prompt).not_to include("app/serializers/user_serializer.rb")
+      expect(prompt).not_to include("app/jobs/user_job.rb")
+      expect(prompt).not_to include("app/mailers/user_mailer.rb")
+      expect(prompt).not_to include("app/models/concerns/auditable.rb")
     end
   end
 end

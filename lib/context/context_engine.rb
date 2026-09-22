@@ -8,7 +8,8 @@ class ContextEngine
     policy: %i[primary_policy],
     job: %i[jobs],
     mailer: %i[mailers mailer_views],
-    concern: %i[concerns]
+    concern: %i[concerns],
+    validation: %i[validators]
   }.freeze
 
   def initialize(project_index)

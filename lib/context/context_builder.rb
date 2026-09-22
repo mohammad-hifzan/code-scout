@@ -53,7 +53,10 @@ class ContextBuilder
         mailer_views(model_name),
 
       concerns:
-        concerns(model, model_name, ref_categories[:concerns])
+        concerns(model, model_name, ref_categories[:concerns]),
+
+      validators:
+        validators(model, model_name)
     }
   end
 
@@ -213,6 +216,31 @@ class ContextBuilder
         f.to_s.include?("/app/models/concerns/") && File.exist?(f)
       end
       files.concat(model_ref_concerns)
+    end
+
+    files.uniq
+  end
+
+  def validators(model, model_name)
+    return [] unless model && model[:path] && File.exist?(model[:path])
+
+    analysis = @model_analyzer.analyze(model[:path])
+    validator_names = Array(analysis[:validators])
+    return [] if validator_names.empty?
+
+    validator_root = File.expand_path(File.join(project_path, "app/validators"))
+    validator_prefix = "#{validator_root}/"
+
+    files = []
+    validator_names.each do |val|
+      next if val.nil? || val.empty?
+
+      relative_file = "#{val.delete_prefix('::').underscore}.rb"
+      candidate = File.expand_path(File.join(validator_root, relative_file))
+      next unless candidate.start_with?(validator_prefix) || candidate == validator_root
+      next unless File.exist?(candidate)
+
+      files << candidate
     end
 
     files.uniq

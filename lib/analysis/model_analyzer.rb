@@ -1,7 +1,30 @@
+require "set"
 require "parser/current"
 require "active_support/core_ext/object/blank"
+require "active_support/core_ext/string/inflections"
 
 class ModelAnalyzer
+  BUILTIN_VALIDATION_OPTIONS = %w[
+    presence
+    absence
+    acceptance
+    confirmation
+    comparison
+    format
+    inclusion
+    exclusion
+    length
+    numericality
+    uniqueness
+    allow_nil
+    allow_blank
+    on
+    if
+    unless
+    strict
+    message
+  ].to_set.freeze
+
   def analyze(path)
     source = File.read(path)
 
@@ -21,7 +44,8 @@ class ModelAnalyzer
       scopes: visitor.scopes,
       enums: visitor.enums,
       includes: visitor.includes,
-      extends: visitor.extends
+      extends: visitor.extends,
+      validators: visitor.validators.uniq
     }
   end
 
@@ -44,7 +68,8 @@ class ModelAnalyzer
       scopes: [],
       enums: [],
       includes: [],
-      extends: []
+      extends: [],
+      validators: []
     }
   end
 
@@ -55,7 +80,8 @@ class ModelAnalyzer
                 :scopes,
                 :enums,
                 :includes,
-                :extends
+                :extends,
+                :validators
 
     def initialize
       @associations = {
@@ -70,6 +96,7 @@ class ModelAnalyzer
       @enums = []
       @includes = []
       @extends = []
+      @validators = []
     end
 
     def on_send(node)
@@ -82,6 +109,10 @@ class ModelAnalyzer
 
         when :validates
           add_validations(args)
+          add_custom_validators(args)
+
+        when :validates_with
+          add_validates_with(args)
 
         when /^before_/, /^after_/, /^around_/
           add_callback(args)
@@ -151,6 +182,31 @@ class ModelAnalyzer
         next unless arg.type == :sym
 
         @validations << arg.children.first.to_s
+      end
+    end
+
+    def add_validates_with(args)
+      args.each do |arg|
+        next unless arg.type == :const
+
+        name = arg.loc.expression.source
+        name = name.delete_prefix("::")
+        @validators << name if name.present?
+      end
+    end
+
+    def add_custom_validators(args)
+      args.select { |arg| arg.type == :hash }.each do |options_node|
+        options_node.children.each do |pair|
+          key_node, value_node = *pair
+          next unless key_node&.type == :sym
+
+          key = key_node.children.first.to_s
+          next if BUILTIN_VALIDATION_OPTIONS.include?(key)
+          next if value_node&.type == :false
+
+          @validators << "#{key.camelize}Validator"
+        end
       end
     end
 
