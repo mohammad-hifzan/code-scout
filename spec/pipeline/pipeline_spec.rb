@@ -1023,5 +1023,62 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).not_to include("app/mailers/user_mailer.rb")
       expect(prompt).not_to include("app/models/concerns/auditable.rb")
     end
+
+    it "resolves Change the User association with Account end-to-end and promotes related models to required context" do
+      create_model_file(
+        "user",
+        <<~RUBY
+          class User < ApplicationRecord
+            belongs_to :account
+            has_many :posts
+          end
+        RUBY
+      )
+      create_model_file(
+        "account",
+        <<~RUBY
+          class Account < ApplicationRecord
+            has_many :users
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Change the User association with Account")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/models\/account\.rb/)
+      expect(prompt).to include("Account")
+      expect(prompt).to include("## TASK")
+      expect(prompt).to include("Change the User association with Account")
+    end
+
+    it "does not promote related models to required context for non-association edit requests" do
+      create_model_file(
+        "user",
+        <<~RUBY
+          class User < ApplicationRecord
+            belongs_to :account
+          end
+        RUBY
+      )
+      create_model_file(
+        "account",
+        <<~RUBY
+          class Account < ApplicationRecord
+          end
+        RUBY
+      )
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Add a validation to User")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/models\/account\.rb/)
+    end
   end
 end

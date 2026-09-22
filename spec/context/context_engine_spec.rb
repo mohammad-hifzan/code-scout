@@ -707,6 +707,61 @@ RSpec.describe ContextEngine do
             expect(result[:required]).not_to include('auditable.rb')
           end
         end
+
+        context 'with association topic selection' do
+          let(:edit_rule) { ContextRules::EditModelRule.new }
+          let(:debug_rule) { ContextRules::DebugRule.new }
+          let(:explain_rule) { ContextRules::ExplainRule.new }
+          let(:model_context) do
+            super().merge(related_models: ['app/models/account.rb', 'app/models/post.rb'])
+          end
+
+          it 'promotes related models to required for edit action with association topic' do
+            result = engine.build(entity, rule: edit_rule, topic: :association)
+            expect(result[:required]).to include('app/models/account.rb', 'app/models/post.rb')
+            expect(result[:related]).not_to include('app/models/account.rb', 'app/models/post.rb')
+          end
+
+          it 'promotes related models to required for explain action with association topic' do
+            result = engine.build(entity, rule: explain_rule, topic: :association)
+            expect(result[:required]).to include('app/models/account.rb', 'app/models/post.rb')
+            expect(result[:related]).not_to include('app/models/account.rb', 'app/models/post.rb')
+          end
+
+          it 'promotes related models to required for debug action with association topic without duplication in related' do
+            result = engine.build(entity, rule: debug_rule, topic: :association)
+            expect(result[:required]).to include('app/models/account.rb', 'app/models/post.rb')
+            expect(result[:related]).not_to include('app/models/account.rb', 'app/models/post.rb')
+          end
+
+          it 'does not promote related models to required for edit action when topic is :validation' do
+            result = engine.build(entity, rule: edit_rule, topic: :validation)
+            expect(result[:required]).not_to include('app/models/account.rb', 'app/models/post.rb')
+            expect(result[:related]).to include('app/models/account.rb', 'app/models/post.rb')
+          end
+
+          it 'does not promote related models to required for edit action when topic is :general' do
+            result = engine.build(entity, rule: edit_rule, topic: :general)
+            expect(result[:required]).not_to include('app/models/account.rb', 'app/models/post.rb')
+            expect(result[:related]).to include('app/models/account.rb', 'app/models/post.rb')
+          end
+
+          it 'preserves existing debug behavior when topic is :general' do
+            result = engine.build(entity, rule: debug_rule, topic: :general)
+            expect(result[:required]).not_to include('app/models/account.rb', 'app/models/post.rb')
+            expect(result[:related]).to contain_exactly('app/models/account.rb', 'app/models/post.rb')
+          end
+
+          it 'does not promote related models for nil, unknown, or other topics under edit rule' do
+            result_nil = engine.build(entity, rule: edit_rule, topic: nil)
+            result_unknown = engine.build(entity, rule: edit_rule, topic: :unknown_topic)
+            result_mailer = engine.build(entity, rule: edit_rule, topic: :mailer)
+
+            expect(result_nil[:required]).not_to include('app/models/account.rb', 'app/models/post.rb')
+            expect(result_unknown[:required]).not_to include('app/models/account.rb', 'app/models/post.rb')
+            expect(result_mailer[:required]).not_to include('app/models/account.rb', 'app/models/post.rb')
+          end
+        end
       end
     end
   end

@@ -9,7 +9,8 @@ class ContextEngine
     job: %i[jobs],
     mailer: %i[mailers mailer_views],
     concern: %i[concerns],
-    validation: %i[validators]
+    validation: %i[validators],
+    association: %i[related_models]
   }.freeze
 
   def initialize(project_index)
@@ -51,7 +52,7 @@ class ContextEngine
 
     if rule.include_related_models?
       result[:related] =
-        Array(context[:related_models]).compact
+        Array(context[:related_models]).compact - (result[:required] || [])
     end
 
     if rule.include_views?
