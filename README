@@ -1,0 +1,137 @@
+# rails-agent
+
+A Ruby-based static analysis tool for Rails applications. It inspects an existing
+Rails codebase using convention-based discovery and regex-driven analysis, builds a
+lightweight understanding of the domain model and surrounding structure, and turns
+that understanding into a compact, prompt-ready **context bundle** for downstream
+tasks such as code edits, explanations, and debugging.
+
+rails-agent is **not** a Rails runtime interpreter. It favors simple, deterministic
+heuristics and naming conventions over a semantic parser, which keeps it fast and
+easy to extend at the cost of full correctness. It answers practical questions like:
+
+- What files are relevant to a given model?
+- Which controllers, policies, views, and related models belong in context?
+- What dependencies exist around a model, and what is the likely impact of changing it?
+- What Rails artifacts appear to be unused?
+
+## Architecture at a glance
+
+The system is organized into three layers:
+
+1. **Discovery & indexing** — scan Rails conventions into an in-memory project map.
+2. **Analysis & context assembly** — analyze models/controllers/views, then rank,
+   budget, and prune the relevant files.
+3. **Prompt generation & orchestration** — render the selected context into a final prompt.
+
+The canonical end-to-end flow (implemented in `Pipeline::Pipeline`):
+
+```
+User request → RequestAnalyzer → RuleSelector → ProjectMapper → ProjectIndex
+  → ContextEngine → ContextRanker → TokenEstimator → ContextPruner → FileLoader
+  → PromptBuilder → final prompt
+```
+
+See [`architecture.md`](architecture.md) for the full design reference and
+[`docs/`](docs/) for the architecture map and roadmap.
+
+## Project layout
+
+```
+bin/scan              CLI entry point (direct command dispatch)
+lib/indexing/         project discovery: project_mapper, project_index, route_mapper
+lib/analysis/         file-level analyzers: model, controller, view, dependency,
+                      impact, inspector, reference_finder, dead_code_finder
+lib/context/          context assembly & budgeting: builder, engine, ranker,
+                      token_estimator, pruner, file_loader
+lib/context_rules/    inclusion policies per task type: edit_model, explain, debug
+lib/nlp/              request interpretation: request_analyzer, rule_selector
+lib/prompts/          prompt composition: header, instructions, context_section, task
+lib/graph/            association graph traversal: graph_builder
+lib/pipeline/         end-to-end orchestration: pipeline
+spec/                 RSpec test suite
+```
+
+## Setup
+
+Requires Ruby and Bundler.
+
+```bash
+bundle install
+```
+
+## Usage
+
+The CLI lives in `bin/scan`. Each command targets a Rails project by path.
+
+```bash
+# Inspect a model and its categorized references
+bin/scan inspect Shop /path/to/rails/app
+
+# Find raw references to a symbol
+bin/scan references Shop /path/to/rails/app
+
+# Show discovered routes
+bin/scan routes /path/to/rails/app
+
+# Build convention-based context for a model
+bin/scan context Shop /path/to/rails/app
+
+# Analyze a single controller or model
+bin/scan controller ShopsController /path/to/rails/app
+bin/scan model Shop /path/to/rails/app
+
+# Association graph, change impact, and dependencies
+bin/scan graph Shop /path/to/rails/app
+bin/scan impact Shop /path/to/rails/app
+bin/scan dependency Shop /path/to/rails/app
+
+# Likely-unused artifacts
+bin/scan deadcode /path/to/rails/app
+```
+
+Rule-driven context commands take a rule (`edit`, `explain`, or `debug`) as the
+second argument:
+
+```bash
+# Assemble context under a task rule
+bin/scan context-engine edit Shop /path/to/rails/app
+
+# Inspect the ranked context entries
+bin/scan context-rank edit Shop /path/to/rails/app
+
+# Rank → estimate tokens → prune to budget → load file contents
+bin/scan context-files edit Shop /path/to/rails/app
+```
+
+For request-driven workflows, `Pipeline::Pipeline` (`lib/pipeline/pipeline.rb`) wires
+the full flow programmatically. Note that the CLI currently uses direct command
+dispatch rather than routing every command through the Pipeline.
+
+## Development
+
+Run the test suite with RSpec:
+
+```bash
+bundle exec rspec
+```
+
+### Design principles
+
+- **Single responsibility** — each class answers one narrow question.
+- **Composition over inheritance** — the system is built from small, composable components.
+- **Separation of concerns** — discovery, analysis, context building, and prompt
+  generation are distinct layers.
+- **Lazy evaluation** — `ProjectIndex` defers work until it is actually needed.
+- **Heuristic-first & deterministic** — the same input yields the same context and prompt.
+
+## Status
+
+Working today: Rails discovery, in-memory mapping, model/controller/view analysis,
+context assembly for edit/explain/debug tasks, ranking/token-estimation/pruning,
+prompt generation, and the CLI commands above.
+
+Planned: AST-based analysis (instead of regex), persistent indexing/caching,
+multi-provider LLM integration, and a richer dependency/impact graph. See the
+"Current Status" and "Technical Debt" sections of [`architecture.md`](architecture.md)
+for details and known trade-offs.
