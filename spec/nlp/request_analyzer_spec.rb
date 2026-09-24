@@ -359,6 +359,13 @@ RSpec.describe RequestAnalyzer do
         expect(analyzer.analyze("Fix the User model mixin")).to eq(action: :edit, entity: "User", topic: :concern)
       end
 
+      it "evaluates controller concern classification accurately" do
+        expect(analyzer.analyze("Change User controller concern")).to eq(action: :edit, entity: "User", topic: :concern)
+        expect(analyzer.analyze("Change the User controller concern")).to eq(action: :edit, entity: "User", topic: :concern)
+        expect(analyzer.analyze("Change the Authenticatable controller concern for User")).to eq(action: :edit, entity: "User", topic: :concern)
+        expect(analyzer.analyze("Change the Authenticatable controller concern")).to eq(action: :edit, entity: nil, topic: :concern)
+      end
+
       it "avoids false positives for ordinary-language include, extend, mixin, and concern words" do
         expect(analyzer.analyze("Include User in the response")).to eq(action: :edit, entity: "User", topic: :general)
         expect(analyzer.analyze("Include validation for User")).to eq(action: :edit, entity: "User", topic: :validation)

@@ -639,6 +639,115 @@ RSpec.describe ContextBuilder do
         end
       end
 
+      context 'with controller concerns' do
+        let(:user_model_path) { '/fake/project/app/models/user.rb' }
+        let(:users_controller_path) { '/fake/project/app/controllers/users_controller.rb' }
+        let(:authenticatable_concern_path) { '/fake/project/app/controllers/concerns/authenticatable.rb' }
+        let(:api_authenticatable_concern_path) { '/fake/project/app/controllers/concerns/api/authenticatable.rb' }
+        let(:auditable_model_concern_path) { '/fake/project/app/models/concerns/auditable.rb' }
+
+        before do
+          allow(File).to receive(:exist?).with(user_model_path).and_return(true)
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\nend")
+        end
+
+        it 'discovers a controller concern when primary controller includes it' do
+          allow(File).to receive(:exist?).with(users_controller_path).and_return(true)
+          allow(File).to receive(:read).with(users_controller_path).and_return("class UsersController < ApplicationController\n  include Authenticatable\nend")
+          allow(File).to receive(:exist?).with(authenticatable_concern_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:concerns]).to contain_exactly(authenticatable_concern_path)
+        end
+
+        it 'discovers a namespaced controller concern when primary controller includes it' do
+          allow(File).to receive(:exist?).with(users_controller_path).and_return(true)
+          allow(File).to receive(:read).with(users_controller_path).and_return("class UsersController < ApplicationController\n  include Api::Authenticatable\nend")
+          allow(File).to receive(:exist?).with(api_authenticatable_concern_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:concerns]).to contain_exactly(api_authenticatable_concern_path)
+        end
+
+        it 'discovers multiple controller concerns from separate include declarations' do
+          paginatable_path = '/fake/project/app/controllers/concerns/paginatable.rb'
+          allow(File).to receive(:exist?).with(users_controller_path).and_return(true)
+          allow(File).to receive(:read).with(users_controller_path).and_return("class UsersController < ApplicationController\n  include Authenticatable\n  include Paginatable\nend")
+          allow(File).to receive(:exist?).with(authenticatable_concern_path).and_return(true)
+          allow(File).to receive(:exist?).with(paginatable_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:concerns]).to contain_exactly(authenticatable_concern_path, paginatable_path)
+        end
+
+        it 'silently ignores controller concerns when the concern file does not exist on disk' do
+          allow(File).to receive(:exist?).with(users_controller_path).and_return(true)
+          allow(File).to receive(:read).with(users_controller_path).and_return("class UsersController < ApplicationController\n  include MissingConcern\nend")
+
+          context = builder.build('User')
+          expect(context[:concerns]).to be_empty
+        end
+
+        it 'returns no controller concerns when controller has no includes' do
+          allow(File).to receive(:exist?).with(users_controller_path).and_return(true)
+          allow(File).to receive(:read).with(users_controller_path).and_return("class UsersController < ApplicationController\nend")
+
+          context = builder.build('User')
+          expect(context[:concerns]).to be_empty
+        end
+
+        it 'does not discover unrelated concern files under app/controllers/concerns' do
+          allow(File).to receive(:exist?).with(users_controller_path).and_return(true)
+          allow(File).to receive(:read).with(users_controller_path).and_return("class UsersController < ApplicationController\nend")
+          unrelated_concern = '/fake/project/app/controllers/concerns/unrelated.rb'
+          allow(File).to receive(:exist?).with(unrelated_concern).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:concerns]).to be_empty
+        end
+
+        it 'strictly rejects path traversal escaping app/controllers/concerns' do
+          allow(File).to receive(:exist?).with(users_controller_path).and_return(true)
+          allow(File).to receive(:read).with(users_controller_path).and_return("class UsersController < ApplicationController\nend")
+
+          evil_file = '/fake/project/lib/evil.rb'
+          allow(File).to receive(:exist?).with(evil_file).and_return(true)
+
+          resolved = builder.send(:controller_concerns, 'User')
+          expect(resolved).to be_empty
+        end
+
+        it 'combines model concerns and controller concerns' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  include Auditable\nend")
+          allow(File).to receive(:exist?).with(auditable_model_concern_path).and_return(true)
+
+          allow(File).to receive(:exist?).with(users_controller_path).and_return(true)
+          allow(File).to receive(:read).with(users_controller_path).and_return("class UsersController < ApplicationController\n  include Authenticatable\nend")
+          allow(File).to receive(:exist?).with(authenticatable_concern_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:concerns]).to contain_exactly(auditable_model_concern_path, authenticatable_concern_path)
+        end
+
+        it 'deduplicates if the same concern path is discovered through both mechanisms' do
+          allow(File).to receive(:exist?).with(users_controller_path).and_return(true)
+          allow(File).to receive(:read).with(users_controller_path).and_return("class UsersController < ApplicationController\n  include Authenticatable\n  include Authenticatable\nend")
+          allow(File).to receive(:exist?).with(authenticatable_concern_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:concerns]).to contain_exactly(authenticatable_concern_path)
+        end
+
+        it 'does not consume reference-derived controller concerns' do
+          controller_concern = '/fake/project/app/controllers/concerns/unrelated.rb'
+          allow(File).to receive(:exist?).with(controller_concern).and_return(true)
+
+          references = [controller_concern]
+          context = builder.build('User', references: references)
+          expect(context[:concerns]).to be_empty
+        end
+      end
+
       context 'with custom validators' do
         let(:user_model_path) { '/fake/project/app/models/user.rb' }
         let(:admin_user_model_path) { '/fake/project/app/models/admin/user.rb' }

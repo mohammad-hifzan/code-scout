@@ -74,7 +74,7 @@ class RequestAnalyzer
     concern: [
       /\b[A-Za-z0-9_:]+concern(s)?\b/i,
       /\bthe\s+[A-Za-z0-9_:]+\s+concern\b/i,
-      /\bmodel\s+concern(s)?\b/i,
+      /\b(?:model|controller)\s+concern(s)?\b/i,
       /\b(?:model\s+)?mixin(s)?\b/i,
       /\bactive_?support(?:::|\s+)concern\b/i
     ],

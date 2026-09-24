@@ -1121,5 +1121,37 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("app/models/user.rb")
       expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/services\/user_service\.rb/)
     end
+
+    it "resolves Change User controller concern end-to-end and promotes controller concern to required context" do
+      create_model_file("user", "class User < ApplicationRecord\nend")
+      create_controller_file("users_controller", "class UsersController < ApplicationController\n  include Authenticatable\nend")
+      create_controller_concern_file("authenticatable", "module Authenticatable; end")
+      create_controller_concern_file("unrelated_concern", "module UnrelatedConcern; end")
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Change User controller concern")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/controllers\/concerns\/authenticatable\.rb/)
+
+      # Isolation check:
+      expect(prompt).not_to include("app/controllers/concerns/unrelated_concern.rb")
+    end
+
+    it "does not promote controller concerns to required context for non-concern requests" do
+      create_model_file("user", "class User < ApplicationRecord\nend")
+      create_controller_file("users_controller", "class UsersController < ApplicationController\n  include Authenticatable\nend")
+      create_controller_concern_file("authenticatable", "module Authenticatable; end")
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Add a validation to User")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/controllers\/concerns\/authenticatable\.rb/)
+    end
   end
 end

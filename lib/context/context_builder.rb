@@ -1,6 +1,7 @@
 require "active_support/inflector"
 require_relative "../analysis/association_resolver"
 require_relative "../analysis/model_analyzer"
+require_relative "../analysis/controller_analyzer"
 require_relative "../reference_categorizer"
 
 class ContextBuilder
@@ -9,6 +10,7 @@ class ContextBuilder
     @project_path = project_path
     @association_resolver = AssociationResolver.new(project_map)
     @model_analyzer = ModelAnalyzer.new
+    @controller_analyzer = ControllerAnalyzer.new
   end
 
   def build(model_name, references: nil)
@@ -199,6 +201,13 @@ class ContextBuilder
 
   def concerns(model, model_name, ref_concerns = nil)
     files = []
+    files.concat(model_concerns(model, ref_concerns))
+    files.concat(controller_concerns(model_name))
+    files.uniq
+  end
+
+  def model_concerns(model, ref_concerns = nil)
+    files = []
 
     # 1. Direct AST evidence (includes & extends)
     if model && model[:path] && File.exist?(model[:path])
@@ -219,6 +228,32 @@ class ContextBuilder
         f.to_s.include?("/app/models/concerns/") && File.exist?(f)
       end
       files.concat(model_ref_concerns)
+    end
+
+    files.uniq
+  end
+
+  def controller_concerns(model_name)
+    controller_path = primary_controller(model_name)
+    return [] unless controller_path && File.exist?(controller_path)
+
+    analysis = @controller_analyzer.analyze(controller_path)
+    modules = Array(analysis[:modules]).uniq
+    return [] if modules.empty?
+
+    concerns_root = File.expand_path(File.join(project_path, "app/controllers/concerns"))
+    concerns_prefix = "#{concerns_root}/"
+
+    files = []
+    modules.each do |mod|
+      next if mod.nil? || mod.empty?
+
+      relative_file = "#{mod.delete_prefix('::').underscore}.rb"
+      candidate = File.expand_path(File.join(concerns_root, relative_file))
+      next unless candidate.start_with?(concerns_prefix)
+      next unless File.exist?(candidate)
+
+      files << candidate
     end
 
     files.uniq
