@@ -56,7 +56,10 @@ class ContextBuilder
         concerns(model, model_name, ref_categories[:concerns]),
 
       validators:
-        validators(model, model_name)
+        validators(model, model_name),
+
+      services:
+        services(model_name)
     }
   end
 
@@ -244,5 +247,20 @@ class ContextBuilder
     end
 
     files.uniq
+  end
+
+  def services(model_name)
+    return [] if model_name.nil? || model_name.empty?
+
+    services_root = File.expand_path(File.join(project_path, "app/services"))
+    services_prefix = "#{services_root}/"
+
+    relative_file = "#{model_name.underscore}_service.rb"
+    candidate = File.expand_path(File.join(services_root, relative_file))
+
+    return [] unless candidate.start_with?(services_prefix)
+    return [] unless File.exist?(candidate)
+
+    [candidate]
   end
 end

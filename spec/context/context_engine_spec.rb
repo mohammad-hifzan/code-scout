@@ -762,6 +762,45 @@ RSpec.describe ContextEngine do
             expect(result_mailer[:required]).not_to include('app/models/account.rb', 'app/models/post.rb')
           end
         end
+
+        context 'with service topic selection' do
+          let(:edit_rule) { ContextRules::EditModelRule.new }
+          let(:debug_rule) { ContextRules::DebugRule.new }
+          let(:explain_rule) { ContextRules::ExplainRule.new }
+          let(:model_context) do
+            super().merge(services: ['app/services/user_service.rb'])
+          end
+
+          it 'promotes services to required for edit action with service topic' do
+            result = engine.build(entity, rule: edit_rule, topic: :service)
+            expect(result[:required]).to include('app/services/user_service.rb')
+          end
+
+          it 'promotes services to required for explain action with service topic' do
+            result = engine.build(entity, rule: explain_rule, topic: :service)
+            expect(result[:required]).to include('app/services/user_service.rb')
+          end
+
+          it 'promotes services to required for debug action with service topic' do
+            result = engine.build(entity, rule: debug_rule, topic: :service)
+            expect(result[:required]).to include('app/services/user_service.rb')
+          end
+
+          it 'does not promote services to required for other topics' do
+            %i[general validation association policy job mailer concern].each do |other_topic|
+              result = engine.build(entity, rule: edit_rule, topic: other_topic)
+              expect(result[:required]).not_to include('app/services/user_service.rb')
+            end
+          end
+
+          it 'does not promote services for nil or unknown topics' do
+            result_nil = engine.build(entity, rule: edit_rule, topic: nil)
+            result_unknown = engine.build(entity, rule: edit_rule, topic: :unknown_topic)
+
+            expect(result_nil[:required]).not_to include('app/services/user_service.rb')
+            expect(result_unknown[:required]).not_to include('app/services/user_service.rb')
+          end
+        end
       end
     end
   end

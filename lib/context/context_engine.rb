@@ -10,7 +10,8 @@ class ContextEngine
     mailer: %i[mailers mailer_views],
     concern: %i[concerns],
     validation: %i[validators],
-    association: %i[related_models]
+    association: %i[related_models],
+    service: %i[services]
   }.freeze
 
   def initialize(project_index)

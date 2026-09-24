@@ -258,6 +258,13 @@ RSpec.describe Pipeline::Pipeline do
       full_path
     end
 
+    def create_service_file(name, content)
+      full_path = File.join(tmp_project_path, "app", "services", "#{name}.rb")
+      FileUtils.mkdir_p(File.dirname(full_path))
+      File.write(full_path, content)
+      full_path
+    end
+
     before do
       create_model_file(
         "user",
@@ -1079,6 +1086,40 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("## PRIMARY")
       expect(prompt).to include("app/models/user.rb")
       expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/models\/account\.rb/)
+    end
+
+    it "resolves Update UserService end-to-end and promotes conventional service to required context" do
+      create_model_file("user", "class User < ApplicationRecord\nend")
+      create_service_file("user_service", "class UserService; end")
+      create_service_file("user_registration_service", "class UserRegistrationService; end")
+      create_serializer_file("user_serializer", "class UserSerializer; end")
+      create_job_file("user_job", "class UserJob < ApplicationJob; end")
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Update UserService")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/services\/user_service\.rb/)
+
+      # Pollution checks:
+      expect(prompt).not_to include("app/services/user_registration_service.rb")
+      expect(prompt).not_to include("app/serializers/user_serializer.rb")
+      expect(prompt).not_to include("app/jobs/user_job.rb")
+    end
+
+    it "does not promote conventional service to required context for non-service requests" do
+      create_model_file("user", "class User < ApplicationRecord\nend")
+      create_service_file("user_service", "class UserService; end")
+
+      pipeline = described_class.new(tmp_project_path)
+      prompt = pipeline.run("Add a validation to User")
+
+      expect(prompt).to be_a(String)
+      expect(prompt).to include("## PRIMARY")
+      expect(prompt).to include("app/models/user.rb")
+      expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/services\/user_service\.rb/)
     end
   end
 end

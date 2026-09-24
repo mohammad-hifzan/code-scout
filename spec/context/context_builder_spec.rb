@@ -738,6 +738,58 @@ RSpec.describe ContextBuilder do
           expect(context[:validators]).to be_empty
         end
       end
+
+      context 'with conventional services' do
+        let(:user_service_path) { '/fake/project/app/services/user_service.rb' }
+        let(:admin_user_service_path) { '/fake/project/app/services/admin/user_service.rb' }
+
+        it 'discovers conventional user_service.rb when it exists on disk' do
+          allow(File).to receive(:exist?).with(user_service_path).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:services]).to contain_exactly(user_service_path)
+        end
+
+        it 'discovers namespaced admin/user_service.rb for Admin::User when it exists on disk' do
+          allow(File).to receive(:exist?).with(admin_user_service_path).and_return(true)
+
+          context = builder.build('Admin::User')
+          expect(context[:services]).to contain_exactly(admin_user_service_path)
+        end
+
+        it 'returns an empty array when service file does not exist on disk' do
+          context = builder.build('User')
+          expect(context[:services]).to be_empty
+        end
+
+        it 'does not discover unrelated services merely because they exist in app/services' do
+          user_registration_service = '/fake/project/app/services/user_registration_service.rb'
+          other_service = '/fake/project/app/services/other_service.rb'
+          allow(File).to receive(:exist?).with(user_registration_service).and_return(true)
+          allow(File).to receive(:exist?).with(other_service).and_return(true)
+
+          context = builder.build('User')
+          expect(context[:services]).to be_empty
+        end
+
+        it 'strictly rejects path traversal escaping app/services' do
+          evil_service = '/fake/project/lib/evil_service.rb'
+          allow(File).to receive(:exist?).with(evil_service).and_return(true)
+
+          resolved = builder.send(:services, '../../lib/evil')
+          expect(resolved).to be_empty
+        end
+
+        it 'does not ingest reference-derived services from references argument' do
+          allow(File).to receive(:exist?).with(user_service_path).and_return(true)
+          references = [
+            '/fake/project/app/services/user_registration_service.rb',
+            '/fake/project/app/services/arbitrary_service.rb'
+          ]
+          context = builder.build('User', references: references)
+          expect(context[:services]).to contain_exactly(user_service_path)
+        end
+      end
     end
   end
 
