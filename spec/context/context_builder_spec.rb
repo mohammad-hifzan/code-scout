@@ -899,6 +899,68 @@ RSpec.describe ContextBuilder do
           expect(context[:services]).to contain_exactly(user_service_path)
         end
       end
+
+      context 'with supplied ModelAnalyzer analysis' do
+        let(:user_model_path) { '/fake/project/app/models/user.rb' }
+        let(:auditable_concern_path) { '/fake/project/app/models/concerns/auditable.rb' }
+        let(:email_validator_path) { '/fake/project/app/validators/email_validator.rb' }
+
+        before do
+          allow(File).to receive(:exist?).with(user_model_path).and_return(true)
+        end
+
+        it 'uses the supplied analysis without calling ModelAnalyzer internally' do
+          supplied_analysis = {
+            includes: ['Auditable'],
+            extends: [],
+            validators: ['EmailValidator']
+          }
+          allow(File).to receive(:exist?).with(auditable_concern_path).and_return(true)
+          allow(File).to receive(:exist?).with(email_validator_path).and_return(true)
+
+          model_analyzer = builder.instance_variable_get(:@model_analyzer)
+          expect(model_analyzer).not_to receive(:analyze)
+
+          context = builder.build('User', analysis: supplied_analysis)
+          expect(context[:concerns]).to include(auditable_concern_path)
+          expect(context[:validators]).to include(email_validator_path)
+        end
+
+        it 'preserves identical discovery for model concerns from supplied analysis' do
+          supplied_analysis = {
+            includes: ['Auditable'],
+            extends: []
+          }
+          allow(File).to receive(:exist?).with(auditable_concern_path).and_return(true)
+
+          context = builder.build('User', analysis: supplied_analysis)
+          expect(context[:concerns]).to contain_exactly(auditable_concern_path)
+        end
+
+        it 'preserves identical discovery for validators from supplied analysis' do
+          supplied_analysis = {
+            validators: ['EmailValidator']
+          }
+          allow(File).to receive(:exist?).with(email_validator_path).and_return(true)
+
+          context = builder.build('User', analysis: supplied_analysis)
+          expect(context[:validators]).to contain_exactly(email_validator_path)
+        end
+
+        it 'behaves identically when supplied analysis has missing or empty keys' do
+          context = builder.build('User', analysis: {})
+          expect(context[:concerns]).to be_empty
+          expect(context[:validators]).to be_empty
+        end
+
+        it 'falls back to analyzing the model internally when analysis is nil' do
+          allow(File).to receive(:read).with(user_model_path).and_return("class User < ApplicationRecord\n  include Auditable\nend")
+          allow(File).to receive(:exist?).with(auditable_concern_path).and_return(true)
+
+          context = builder.build('User', analysis: nil)
+          expect(context[:concerns]).to contain_exactly(auditable_concern_path)
+        end
+      end
     end
   end
 

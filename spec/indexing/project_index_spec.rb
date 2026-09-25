@@ -81,7 +81,7 @@ RSpec.describe ProjectIndex do
         result = project_index.model('User')
 
         expect(model_analyzer).to have_received(:analyze).with('/fake/project/app/models/user.rb')
-        expect(context_builder).to have_received(:build).with('User')
+        expect(context_builder).to have_received(:build).with('User', analysis: { model_analysis: 'done' })
         expect(dependency_analyzer).to have_received(:analyze).with('User')
         expect(impact_analyzer).to have_received(:analyze).with('User')
 

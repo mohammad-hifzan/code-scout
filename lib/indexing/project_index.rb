@@ -55,12 +55,13 @@ class ProjectIndex
     model = @project_map[:models][name]
     return unless model
 
+    analysis = ModelAnalyzer.new.analyze(model[:path])
+
     {
-      analyzer:
-        ModelAnalyzer.new.analyze(model[:path]),
+      analyzer: analysis,
 
       context:
-        @context_builder.build(name),
+        @context_builder.build(name, analysis: analysis),
 
       dependency:
         @dependency_analyzer.analyze(name),

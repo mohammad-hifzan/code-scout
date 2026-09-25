@@ -13,13 +13,15 @@ class ContextBuilder
     @controller_analyzer = ControllerAnalyzer.new
   end
 
-  def build(model_name, references: nil)
+  def build(model_name, references: nil, analysis: nil)
     model =
       project_map.dig(:models, model_name)
 
     return nil unless model
 
     ref_categories = extract_reference_categories(references)
+
+    model_analysis = analysis || (model[:path] && File.exist?(model[:path]) ? @model_analyzer.analyze(model[:path]) : nil)
 
     {
       model: model[:path],
@@ -55,10 +57,10 @@ class ContextBuilder
         mailer_views(model_name),
 
       concerns:
-        concerns(model, model_name, ref_categories[:concerns]),
+        concerns(model, model_name, ref_categories[:concerns], model_analysis),
 
       validators:
-        validators(model, model_name),
+        validators(model, model_name, model_analysis),
 
       services:
         services(model_name)
@@ -199,20 +201,20 @@ class ContextBuilder
     Dir.glob(pattern).select { |f| File.file?(f) }
   end
 
-  def concerns(model, model_name, ref_concerns = nil)
+  def concerns(model, model_name, ref_concerns = nil, analysis = nil)
     files = []
-    files.concat(model_concerns(model, ref_concerns))
+    files.concat(model_concerns(model, ref_concerns, analysis))
     files.concat(controller_concerns(model_name))
     files.uniq
   end
 
-  def model_concerns(model, ref_concerns = nil)
+  def model_concerns(model, ref_concerns = nil, analysis = nil)
     files = []
 
     # 1. Direct AST evidence (includes & extends)
     if model && model[:path] && File.exist?(model[:path])
-      analysis = @model_analyzer.analyze(model[:path])
-      modules = (Array(analysis[:includes]) + Array(analysis[:extends])).uniq
+      model_data = analysis || @model_analyzer.analyze(model[:path])
+      modules = (Array(model_data[:includes]) + Array(model_data[:extends])).uniq
 
       modules.each do |mod|
         next if mod.nil? || mod.empty?
@@ -259,11 +261,11 @@ class ContextBuilder
     files.uniq
   end
 
-  def validators(model, model_name)
+  def validators(model, model_name, analysis = nil)
     return [] unless model && model[:path] && File.exist?(model[:path])
 
-    analysis = @model_analyzer.analyze(model[:path])
-    validator_names = Array(analysis[:validators])
+    model_data = analysis || @model_analyzer.analyze(model[:path])
+    validator_names = Array(model_data[:validators])
     return [] if validator_names.empty?
 
     validator_root = File.expand_path(File.join(project_path, "app/validators"))
