@@ -4,8 +4,6 @@ require_relative "../analysis/model_analyzer"
 require_relative "../analysis/controller_analyzer"
 require_relative "../analysis/view_analyzer"
 require_relative "../context/context_builder"
-require_relative "../analysis/dependency_analyzer"
-require_relative "../analysis/impact_analyzer"
 
 class ProjectIndex
   def initialize(project_map, project_path)
@@ -18,12 +16,6 @@ class ProjectIndex
 
     @context_builder =
       ContextBuilder.new(project_map, project_path)
-
-    @dependency_analyzer =
-      DependencyAnalyzer.new(project_map, project_path)
-
-    @impact_analyzer =
-      ImpactAnalyzer.new(project_map, project_path)
   end
 
   #
@@ -61,13 +53,7 @@ class ProjectIndex
       analyzer: analysis,
 
       context:
-        @context_builder.build(name, analysis: analysis),
-
-      dependency:
-        @dependency_analyzer.analyze(name),
-
-      impact:
-        @impact_analyzer.analyze(name)
+        @context_builder.build(name, analysis: analysis)
     }
   end
 

@@ -16,10 +16,8 @@ RSpec.describe ProjectIndex do
 
   describe '#initialize' do
     it 'initializes its analyzer dependencies with the project map and path' do
-      # Expect that the initializers are called with the correct arguments
+      # Expect that ContextBuilder is initialized with the correct arguments
       expect(ContextBuilder).to receive(:new).with(project_map, project_path).and_return(context_builder)
-      expect(DependencyAnalyzer).to receive(:new).with(project_map, project_path).and_return(dependency_analyzer)
-      expect(ImpactAnalyzer).to receive(:new).with(project_map, project_path).and_return(impact_analyzer)
 
       # We need to explicitly allow ModelAnalyzer, ControllerAnalyzer, and ViewAnalyzer to be stubbed
       # because the main `before` block stubs them, and this test needs them stubbed too
@@ -27,8 +25,7 @@ RSpec.describe ProjectIndex do
       allow(ControllerAnalyzer).to receive(:new).and_return(controller_analyzer)
       allow(ViewAnalyzer).to receive(:new).and_return(view_analyzer)
 
-
-      # Instantiate the class to trigger the initialize method and its dependency initializations
+      # Instantiate the class to trigger the initialize method
       described_class.new(project_map, project_path)
     end
   end
@@ -77,20 +74,20 @@ RSpec.describe ProjectIndex do
 
   describe '#model' do
     context 'when the model exists' do
-      it 'builds the model using all relevant analyzers' do
+      it 'builds the model using ModelAnalyzer and ContextBuilder without eagerly running DependencyAnalyzer or ImpactAnalyzer' do
         result = project_index.model('User')
 
         expect(model_analyzer).to have_received(:analyze).with('/fake/project/app/models/user.rb')
         expect(context_builder).to have_received(:build).with('User', analysis: { model_analysis: 'done' })
-        expect(dependency_analyzer).to have_received(:analyze).with('User')
-        expect(impact_analyzer).to have_received(:analyze).with('User')
+        expect(dependency_analyzer).not_to have_received(:analyze)
+        expect(impact_analyzer).not_to have_received(:analyze)
 
         expect(result).to eq({
           analyzer: { model_analysis: 'done' },
-          context: { context: 'built' },
-          dependency: { dependencies: 'analyzed' },
-          impact: { impact: 'analyzed' }
+          context: { context: 'built' }
         })
+        expect(result.key?(:dependency)).to be false
+        expect(result.key?(:impact)).to be false
       end
 
       it 'caches the result for subsequent calls' do
@@ -100,8 +97,8 @@ RSpec.describe ProjectIndex do
         # Verify that the analyzers were only called once
         expect(model_analyzer).to have_received(:analyze).once
         expect(context_builder).to have_received(:build).once
-        expect(dependency_analyzer).to have_received(:analyze).once
-        expect(impact_analyzer).to have_received(:analyze).once
+        expect(dependency_analyzer).not_to have_received(:analyze)
+        expect(impact_analyzer).not_to have_received(:analyze)
       end
     end
 
@@ -247,15 +244,15 @@ RSpec.describe ProjectIndex do
       )
     end
 
-    it 'produces a consistent composite model result across real ProjectMapper and all analyzers' do
+    it 'produces a consistent composite model result across real ProjectMapper and relevant analyzers' do
       result = unmocked_index.model('User')
 
       expect(result).to include(
         :analyzer,
-        :context,
-        :dependency,
-        :impact
+        :context
       )
+      expect(result.key?(:dependency)).to be false
+      expect(result.key?(:impact)).to be false
 
       expect(result[:analyzer][:model]).to eq('User')
       expect(result[:analyzer][:associations][:has_many]).to contain_exactly({ name: 'posts' })
@@ -263,14 +260,6 @@ RSpec.describe ProjectIndex do
       expect(result[:context][:model]).to eq(File.join(tmp_project_path, 'app', 'models', 'user.rb'))
       expect(result[:context][:related_models]).to contain_exactly(File.join(tmp_project_path, 'app', 'models', 'post.rb'))
       expect(result[:context][:primary_controller]).to eq(File.join(tmp_project_path, 'app', 'controllers', 'users_controller.rb'))
-
-      expect(result[:dependency][:target]).to eq('User')
-      expect(result[:dependency][:direct_dependencies][:models]).to include('Post')
-      expect(result[:dependency][:direct_dependencies][:controllers]).to include('UsersController')
-
-      expect(result[:impact][:target]).to eq('User')
-      expect(result[:impact][:direct_impact][:models]).to include('Post')
-      expect(result[:impact][:direct_impact][:controllers]).to contain_exactly(File.join(tmp_project_path, 'app', 'controllers', 'users_controller.rb'))
     end
 
     it 'returns nil for non-existent model in real project map' do
