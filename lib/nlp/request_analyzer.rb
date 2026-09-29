@@ -93,18 +93,67 @@ class RequestAnalyzer
     service
   ].freeze
 
+  ASSOCIATION_STOP_WORDS = %w[
+    the
+    a
+    an
+    this
+    that
+    these
+    those
+    my
+    our
+    your
+    their
+    its
+    on
+    in
+    for
+    with
+    between
+    to
+    from
+    at
+    by
+    of
+    and
+    or
+    is
+    are
+    model
+    record
+    entity
+    table
+    new
+    old
+    current
+    existing
+    belongs_to
+    has_many
+    has_one
+    has_and_belongs_to_many
+    association
+    associations
+    relationship
+    relationships
+  ].freeze
+
   def initialize(models: [])
     @models = models || []
   end
 
   def analyze(request, models: nil)
     models_list = models || @models
+    topic = detect_topic(request)
 
-    {
+    result = {
       action: detect_action(request),
       entity: detect_entity(request, models_list),
-      topic: detect_topic(request)
+      topic: topic
     }
+
+    result[:association] = detect_association(request, result[:entity]) if topic == :association
+    result
   end
 
   private
@@ -181,6 +230,36 @@ class RequestAnalyzer
     end
 
     detected.size == 1 ? detected.first : :general
+  end
+
+  def detect_association(request, entity)
+    text = request.to_s
+
+    # 1. Macro-based: e.g. "belongs_to account", "has_many :posts"
+    if (m = text.match(/\b(?:belongs_to|has_many|has_one|has_and_belongs_to_many)\s+:?([a-z0-9_]+)\b/i))
+      candidate = m[1].downcase
+      return candidate unless ASSOCIATION_STOP_WORDS.include?(candidate)
+    end
+
+    # 2. "with" preposition: e.g. "association with :posts", "relationship with posts"
+    if (m = text.match(/\b(?:association|relationship)s?\s+with\s+:?([a-z0-9_]+)\b/i))
+      candidate = m[1].downcase
+      return candidate unless ASSOCIATION_STOP_WORDS.include?(candidate) || candidate == entity&.downcase
+    end
+
+    # 3. Preceding token: e.g. "posts association", "User's posts relationship", "the posts association"
+    if (m = text.match(/\b:?([a-z0-9_]+)(?:'s|')?\s+(?:association|relationship)s?\b/i))
+      candidate = m[1].downcase
+      return candidate unless ASSOCIATION_STOP_WORDS.include?(candidate) || candidate == entity&.downcase
+    end
+
+    # 4. Following token: e.g. "association posts", "relationship :posts"
+    if (m = text.match(/\b(?:association|relationship)s?\s+:?([a-z0-9_]+)\b/i))
+      candidate = m[1].downcase
+      return candidate unless ASSOCIATION_STOP_WORDS.include?(candidate) || candidate == entity&.downcase
+    end
+
+    nil
   end
 
   def build_model_lookup(models)

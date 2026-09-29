@@ -267,9 +267,9 @@ RSpec.describe RequestAnalyzer do
       end
 
       it "evaluates association scenarios accurately" do
-        expect(analyzer.analyze("Add an association between User and Account")).to eq(action: :edit, entity: "User", topic: :association)
+        expect(analyzer.analyze("Add an association between User and Account")).to eq(action: :edit, entity: "User", topic: :association, association: nil)
         expect(analyzer.analyze("Why are User accounts not loading?")).to eq(action: :explain, entity: "User", topic: :general)
-        expect(analyzer.analyze("Change User's posts association")).to eq(action: :edit, entity: "User", topic: :association)
+        expect(analyzer.analyze("Change User's posts association")).to eq(action: :edit, entity: "User", topic: :association, association: "posts")
       end
 
       it "evaluates policy scenarios accurately" do
@@ -568,6 +568,60 @@ RSpec.describe RequestAnalyzer do
       expect(result[:action]).to eq(:edit)
       expect(result[:entity]).to be_nil
       expect(result[:topic]).to eq(:validation)
+    end
+  end
+
+  describe "association intent extraction (M8.1a)" do
+    let(:analyzer) { described_class.new(models: ["User", "Account"]) }
+
+    it "extracts specific association name when provided (posts)" do
+      result = analyzer.analyze("Change User's posts association.")
+      expect(result).to eq(
+        action: :edit,
+        entity: "User",
+        topic: :association,
+        association: "posts"
+      )
+    end
+
+    it "extracts another association name correctly (account)" do
+      result = analyzer.analyze("Change User's account association.")
+      expect(result).to eq(
+        action: :edit,
+        entity: "User",
+        topic: :association,
+        association: "account"
+      )
+    end
+
+    it "returns association: nil when no specific association is identified" do
+      result = analyzer.analyze("Change User associations.")
+      expect(result).to eq(
+        action: :edit,
+        entity: "User",
+        topic: :association,
+        association: nil
+      )
+    end
+
+    it "extracts association across varied natural language patterns" do
+      expect(analyzer.analyze("Change User's posts relationship.")[:association]).to eq("posts")
+      expect(analyzer.analyze("Change the posts association on User.")[:association]).to eq("posts")
+      expect(analyzer.analyze("Change User posts association.")[:association]).to eq("posts")
+      expect(analyzer.analyze("Change User association posts.")[:association]).to eq("posts")
+      expect(analyzer.analyze("Fix User association with posts")[:association]).to eq("posts")
+      expect(analyzer.analyze("Add belongs_to account to User")[:association]).to eq("account")
+      expect(analyzer.analyze("Change User has_many :posts association")[:association]).to eq("posts")
+    end
+
+    it "evaluates association: nil for non-association requests while preserving contract" do
+      validation_result = analyzer.analyze("Add email validation to User")
+      expect(validation_result[:association]).to be_nil
+      expect(validation_result).to eq(
+        action: :edit,
+        entity: "User",
+        topic: :validation
+      )
     end
   end
 end
