@@ -33,7 +33,10 @@ class ContextBuilder
         primary_policy(model_name),
 
       related_models:
-        related_models(model, model_name),
+        related_models(model, model_name, model_analysis),
+
+      associations:
+        associations_map(model, model_name, model_analysis),
 
       primary_views:
         primary_views(model_name),
@@ -91,19 +94,27 @@ class ContextBuilder
     File.exist?(policy_file) ? policy_file : nil
   end
 
-  def related_models(model, current_model_name = nil)
+  def related_models(model, current_model_name = nil, model_analysis = nil)
+    associations_map(model, current_model_name, model_analysis).values.uniq
+  end
+
+  def associations_map(model, current_model_name = nil, model_analysis = nil)
     associations =
-      model[:associations]
+      model[:associations] || model_analysis&.dig(:associations)
 
-    return [] unless associations
+    return {} unless associations
 
-    associations.values.flatten.filter_map do |assoc|
+    associations.values.flatten.each_with_object({}) do |assoc, map|
+      assoc_name = assoc.is_a?(Hash) ? (assoc[:name] || assoc['name']) : assoc.to_s
+      next unless assoc_name
+
       resolved = @association_resolver.resolve(current_model_name, assoc)
       direct_model_name = resolved[:through_model] || resolved[:target_model]
       next unless direct_model_name
 
-      project_map.dig(:models, direct_model_name, :path)
-    end.uniq
+      path = project_map.dig(:models, direct_model_name, :path)
+      map[assoc_name.to_s] = path if path
+    end
   end
 
   def extract_reference_categories(references)

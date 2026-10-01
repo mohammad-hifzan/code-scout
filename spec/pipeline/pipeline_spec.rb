@@ -118,7 +118,7 @@ RSpec.describe Pipeline::Pipeline do
 
     expect(engine)
       .to receive(:build)
-      .with("Shop", rule: rule, topic: :general)
+      .with("Shop", rule: rule, topic: :general, association: nil)
       .and_return(context)
 
     expect(estimator)
@@ -164,7 +164,7 @@ RSpec.describe Pipeline::Pipeline do
     expect(mapper).to receive(:map).and_return(project_map)
     expect(analyzer).to receive(:analyze).with(request).and_return({ action: :edit, entity: nil, topic: :general })
     expect(selector).to receive(:select).with(:edit).and_return(rule)
-    expect(engine).to receive(:build).with(nil, rule: rule, topic: :general).and_return(nil)
+    expect(engine).to receive(:build).with(nil, rule: rule, topic: :general, association: nil).and_return(nil)
 
     result = described_class.new(project_path).run(request)
     expect(result).to be_nil
@@ -1060,6 +1060,80 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("Account")
       expect(prompt).to include("## TASK")
       expect(prompt).to include("Change the User association with Account")
+    end
+
+    describe "M8.1b task-aware association selection" do
+      before do
+        create_model_file(
+          "user",
+          <<~RUBY
+            class User < ApplicationRecord
+              has_many :posts
+              belongs_to :account
+            end
+          RUBY
+        )
+        create_model_file(
+          "post",
+          <<~RUBY
+            class Post < ApplicationRecord
+              belongs_to :user
+            end
+          RUBY
+        )
+        create_model_file(
+          "account",
+          <<~RUBY
+            class Account < ApplicationRecord
+              has_many :users
+            end
+          RUBY
+        )
+      end
+
+      it "selects only Post when User's posts association is requested" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change User's posts association.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/models\/post\.rb/)
+        expect(prompt).not_to include("app/models/account.rb")
+      end
+
+      it "selects only Account when User's account association is requested" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change User's account association.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/models\/account\.rb/)
+        expect(prompt).not_to include("app/models/post.rb")
+      end
+
+      it "preserves generic behavior by selecting all association targets when no specific association is specified" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change User associations.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/models\/post\.rb/)
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/models\/account\.rb/)
+      end
+
+      it "fails closed when requested association does not exist on the model" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change User's nonexistent association.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).not_to include("app/models/post.rb")
+        expect(prompt).not_to include("app/models/account.rb")
+      end
     end
 
     it "does not promote related models to required context for non-association edit requests" do

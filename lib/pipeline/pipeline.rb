@@ -44,7 +44,8 @@ module Pipeline
           .build(
             analysis[:entity],
             rule: rule,
-            topic: analysis[:topic] || :general
+            topic: analysis[:topic] || :general,
+            association: analysis[:association]
           )
 
       return unless context

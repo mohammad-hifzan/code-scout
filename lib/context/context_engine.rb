@@ -18,7 +18,7 @@ class ContextEngine
     @project_index = project_index
   end
 
-  def build(entity, rule:, topic: :general)
+  def build(entity, rule:, topic: :general, association: nil)
     model = @project_index.model(entity)
     return unless model
 
@@ -44,14 +44,14 @@ class ContextEngine
       result[:required] << context[:primary_policy] if context[:primary_policy]
     end
 
-    topic_files = topic_required_files(context, topic)
+    topic_files = topic_required_files(context, topic, association: association)
     if topic_files.any?
       result[:required] ||= []
       result[:required].concat(topic_files)
       result[:required].uniq!
     end
 
-    if rule.include_related_models?
+    if rule.include_related_models? && !(topic&.to_sym == :association && association)
       result[:related] =
         Array(context[:related_models]).compact - (result[:required] || [])
     end
@@ -68,8 +68,13 @@ class ContextEngine
 
   private
 
-  def topic_required_files(context, topic)
+  def topic_required_files(context, topic, association: nil)
     return [] unless topic && context
+
+    if topic.to_sym == :association && association
+      target = context.dig(:associations, association.to_s) || context.dig(:associations, association.to_sym)
+      return target ? [target] : []
+    end
 
     categories = TOPIC_REQUIRED_CATEGORIES.fetch(topic.to_sym, [])
     categories.flat_map { |category| Array(context[category]).compact }

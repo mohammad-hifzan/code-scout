@@ -1166,5 +1166,61 @@ RSpec.describe ContextBuilder do
         expect(related).not_to include('/fake/project/app/models/media.rb')
       end
     end
+
+    context 'association target mapping (M8.1b)' do
+      it 'maps association names to resolved target paths' do
+        context = builder.build('User')
+        expect(context[:associations]).to eq(
+          'posts' => '/fake/project/app/models/post.rb',
+          'account' => '/fake/project/app/models/account.rb'
+        )
+      end
+
+      it 'preserves class_name, through, and namespaced associations in mapping' do
+        map = {
+          models: {
+            'Order' => {
+              path: '/fake/project/app/models/order.rb',
+              associations: {
+                has_many: [
+                  { name: 'items', class_name: 'OrderItem' },
+                  { name: 'tags', through: 'taggings' }
+                ],
+                belongs_to: [
+                  { name: 'author', class_name: 'Admin::User' },
+                  { name: 'imageable', polymorphic: true }
+                ]
+              }
+            },
+            'OrderItem' => { path: '/fake/project/app/models/order_item.rb', associations: {} },
+            'Tagging' => { path: '/fake/project/app/models/tagging.rb', associations: {} },
+            'Admin::User' => { path: '/fake/project/app/models/admin/user.rb', associations: {} }
+          }
+        }
+        test_builder = described_class.new(map, '/fake/project')
+        context = test_builder.build('Order')
+        expect(context[:associations]).to eq(
+          'items' => '/fake/project/app/models/order_item.rb',
+          'tags' => '/fake/project/app/models/tagging.rb',
+          'author' => '/fake/project/app/models/admin/user.rb'
+        )
+      end
+
+      it 'omits polymorphic or unresolvable associations from mapping' do
+        map = {
+          models: {
+            'Picture' => {
+              path: '/fake/project/app/models/picture.rb',
+              associations: {
+                belongs_to: [{ name: 'imageable', polymorphic: true }]
+              }
+            }
+          }
+        }
+        test_builder = described_class.new(map, '/fake/project')
+        context = test_builder.build('Picture')
+        expect(context[:associations]).to eq({})
+      end
+    end
   end
 end

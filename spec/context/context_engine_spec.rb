@@ -713,13 +713,39 @@ RSpec.describe ContextEngine do
           let(:debug_rule) { ContextRules::DebugRule.new }
           let(:explain_rule) { ContextRules::ExplainRule.new }
           let(:model_context) do
-            super().merge(related_models: ['app/models/account.rb', 'app/models/post.rb'])
+            super().merge(
+              related_models: ['app/models/account.rb', 'app/models/post.rb'],
+              associations: {
+                'account' => 'app/models/account.rb',
+                'posts' => 'app/models/post.rb'
+              }
+            )
           end
 
           it 'promotes related models to required for edit action with association topic' do
             result = engine.build(entity, rule: edit_rule, topic: :association)
             expect(result[:required]).to include('app/models/account.rb', 'app/models/post.rb')
             expect(result[:related]).not_to include('app/models/account.rb', 'app/models/post.rb')
+          end
+
+          it 'promotes only the specified association target to required and excludes other models (posts)' do
+            result = engine.build(entity, rule: edit_rule, topic: :association, association: 'posts')
+            expect(result[:required]).to include('app/models/post.rb')
+            expect(result[:required]).not_to include('app/models/account.rb')
+            expect(result[:related]).to be_nil.or(be_empty)
+          end
+
+          it 'promotes only the specified association target to required and excludes other models (account)' do
+            result = engine.build(entity, rule: edit_rule, topic: :association, association: 'account')
+            expect(result[:required]).to include('app/models/account.rb')
+            expect(result[:required]).not_to include('app/models/post.rb')
+            expect(result[:related]).to be_nil.or(be_empty)
+          end
+
+          it 'fails closed when the requested association does not exist on the model' do
+            result = engine.build(entity, rule: edit_rule, topic: :association, association: 'nonexistent')
+            expect(result[:required]).not_to include('app/models/account.rb', 'app/models/post.rb')
+            expect(result[:related]).to be_nil.or(be_empty)
           end
 
           it 'promotes related models to required for explain action with association topic' do
