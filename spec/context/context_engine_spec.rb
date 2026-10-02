@@ -763,7 +763,7 @@ RSpec.describe ContextEngine do
           it 'does not promote related models to required for edit action when topic is :validation' do
             result = engine.build(entity, rule: edit_rule, topic: :validation)
             expect(result[:required]).not_to include('app/models/account.rb', 'app/models/post.rb')
-            expect(result[:related]).to include('app/models/account.rb', 'app/models/post.rb')
+            expect(result[:related]).not_to include('app/models/account.rb', 'app/models/post.rb')
           end
 
           it 'does not promote related models to required for edit action when topic is :general' do
@@ -825,6 +825,113 @@ RSpec.describe ContextEngine do
 
             expect(result_nil[:required]).not_to include('app/services/user_service.rb')
             expect(result_unknown[:required]).not_to include('app/services/user_service.rb')
+          end
+        end
+
+        describe 'under M8.2-B task-aware context selection contract' do
+          let(:edit_rule) { ContextRules::EditModelRule.new }
+          let(:explain_rule) { ContextRules::ExplainRule.new }
+          let(:debug_rule) { ContextRules::DebugRule.new }
+
+          let(:full_context) do
+            model_context.merge(
+              related_models: ['post.rb', 'account.rb'],
+              validators: ['email_domain_validator.rb'],
+              serializers: ['user_serializer.rb'],
+              json_views: ['users/show.json.jbuilder'],
+              associations: {
+                'posts' => 'post.rb',
+                'account' => 'account.rb'
+              },
+              mailers: ['user_mailer.rb'],
+              mailer_views: ['users/welcome.html.erb']
+            )
+          end
+
+          before do
+            allow(project_index).to receive(:model).with(entity).and_return({ context: full_context })
+          end
+
+          context 'validation topic under EditModelRule' do
+            it 'keeps model as primary and validator as required, suppressing generic controller, policy, related models, and views' do
+              result = engine.build(entity, rule: edit_rule, topic: :validation)
+
+              expect(result[:primary]).to include('user.rb')
+              expect(result[:required]).to include('email_domain_validator.rb')
+              expect(result[:required]).not_to include('users_controller.rb')
+              expect(result[:required]).not_to include('user_policy.rb')
+              expect(Array(result[:related])).not_to include('post.rb')
+              expect(Array(result[:related])).not_to include('account.rb')
+              expect(Array(result[:optional])).not_to include('users/index.html.erb')
+            end
+          end
+
+          context 'serialization topic under EditModelRule' do
+            it 'keeps model as primary and serializer/json views as required, suppressing controller, policy, and generic related models' do
+              result = engine.build(entity, rule: edit_rule, topic: :serialization)
+
+              expect(result[:primary]).to include('user.rb')
+              expect(result[:required]).to include('user_serializer.rb', 'users/show.json.jbuilder')
+              expect(result[:required]).not_to include('users_controller.rb')
+              expect(result[:required]).not_to include('user_policy.rb')
+              expect(Array(result[:related])).not_to include('post.rb', 'account.rb')
+            end
+          end
+
+          context 'policy topic under EditModelRule' do
+            it 'keeps model as primary and policy as required, suppressing generic controller' do
+              result = engine.build(entity, rule: edit_rule, topic: :policy)
+
+              expect(result[:primary]).to include('user.rb')
+              expect(result[:required]).to include('user_policy.rb')
+              expect(result[:required]).not_to include('users_controller.rb')
+            end
+          end
+
+          context 'specific association under EditModelRule' do
+            it 'keeps model as primary and requested association target as required, suppressing controller, policy, and unrelated association' do
+              result = engine.build(entity, rule: edit_rule, topic: :association, association: 'posts')
+
+              expect(result[:primary]).to include('user.rb')
+              expect(result[:required]).to include('post.rb')
+              expect(result[:required]).not_to include('users_controller.rb')
+              expect(result[:required]).not_to include('user_policy.rb')
+              expect(result[:required]).not_to include('account.rb')
+            end
+          end
+
+          context 'general edit topic under EditModelRule' do
+            it 'preserves full CRUD context including controller, policy, related models, and views' do
+              result = engine.build(entity, rule: edit_rule, topic: :general)
+
+              expect(result[:primary]).to include('user.rb')
+              expect(result[:required]).to include('users_controller.rb', 'user_policy.rb')
+              expect(result[:related]).to include('post.rb', 'account.rb')
+              expect(result[:optional]).to include('users/index.html.erb')
+            end
+          end
+
+          context 'ExplainRule regression' do
+            it 'preserves existing controller inclusion for explain rule with validation topic' do
+              result = engine.build(entity, rule: explain_rule, topic: :validation)
+
+              expect(result[:required]).to include('users_controller.rb', 'email_domain_validator.rb')
+            end
+
+            it 'preserves existing controller inclusion for explain rule with mailer topic' do
+              result = engine.build(entity, rule: explain_rule, topic: :mailer)
+
+              expect(result[:required]).to include('users_controller.rb', 'user_mailer.rb', 'users/welcome.html.erb')
+            end
+          end
+
+          context 'DebugRule regression' do
+            it 'preserves existing controller and policy inclusion for debug rule with validation topic' do
+              result = engine.build(entity, rule: debug_rule, topic: :validation)
+
+              expect(result[:required]).to include('users_controller.rb', 'user_policy.rb', 'email_domain_validator.rb')
+              expect(result[:related]).to include('post.rb', 'account.rb')
+            end
           end
         end
       end

@@ -299,8 +299,7 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("## PRIMARY")
       expect(prompt).to include("app/models/user.rb")
       expect(prompt).to include("class User < ApplicationRecord")
-      expect(prompt).to include("## REQUIRED")
-      expect(prompt).to include("app/controllers/users_controller.rb")
+      expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/controllers\/users_controller\.rb/)
       expect(prompt).to include("## TASK")
       expect(prompt).to include("Add a validation to User.")
       expect(prompt).not_to include("Add.rb")
@@ -467,7 +466,7 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("## PRIMARY")
       expect(prompt).to include("app/models/user.rb")
       expect(prompt).to include("## REQUIRED")
-      expect(prompt).to include("app/controllers/users_controller.rb")
+      expect(prompt).not_to include("app/controllers/users_controller.rb")
       expect(prompt).to include("app/jobs/user_job.rb")
       expect(prompt).to include("UserJob")
       expect(prompt).to include("## TASK")
@@ -540,7 +539,7 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("## PRIMARY")
       expect(prompt).to include("app/models/admin/user.rb")
       expect(prompt).to include("## REQUIRED")
-      expect(prompt).to include("app/controllers/admin/users_controller.rb")
+      expect(prompt).not_to include("app/controllers/admin/users_controller.rb")
       expect(prompt).to include("app/jobs/admin/user_job.rb")
       expect(prompt).to include("Admin::UserJob")
       expect(prompt).to include("## TASK")
@@ -588,7 +587,7 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("## PRIMARY")
       expect(prompt).to include("app/models/admin/user.rb")
       expect(prompt).to include("## REQUIRED")
-      expect(prompt).to include("app/controllers/admin/users_controller.rb")
+      expect(prompt).not_to include("app/controllers/admin/users_controller.rb")
       expect(prompt).to include("app/workers/admin/user_worker.rb")
       expect(prompt).to include("Admin::UserWorker")
       expect(prompt).not_to include("app/jobs/user_job.rb")
@@ -654,7 +653,7 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("## PRIMARY")
       expect(prompt).to include("app/models/user.rb")
       expect(prompt).to include("## REQUIRED")
-      expect(prompt).to include("app/controllers/users_controller.rb")
+      expect(prompt).not_to include("app/controllers/users_controller.rb")
       expect(prompt).to include("app/mailers/user_mailer.rb")
       expect(prompt).to include("app/views/user_mailer/welcome.html.erb")
       expect(prompt).to include("app/views/user_mailer/welcome.text.erb")
@@ -732,7 +731,7 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("## PRIMARY")
       expect(prompt).to include("app/models/admin/user.rb")
       expect(prompt).to include("## REQUIRED")
-      expect(prompt).to include("app/controllers/admin/users_controller.rb")
+      expect(prompt).not_to include("app/controllers/admin/users_controller.rb")
       expect(prompt).to include("app/mailers/admin/user_mailer.rb")
       expect(prompt).to include("app/views/admin/user_mailer/alert.html.erb")
       expect(prompt).to include("Admin::UserMailer")
@@ -808,7 +807,7 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("## PRIMARY")
       expect(prompt).to include("app/models/user.rb")
       expect(prompt).to include("## REQUIRED")
-      expect(prompt).to include("app/controllers/users_controller.rb")
+      expect(prompt).not_to include("app/controllers/users_controller.rb")
       expect(prompt).to include("app/models/concerns/auditable.rb")
       expect(prompt).to include("Auditable")
       expect(prompt).to include("## TASK")
@@ -860,7 +859,7 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("## PRIMARY")
       expect(prompt).to include("app/models/user.rb")
       expect(prompt).to include("## REQUIRED")
-      expect(prompt).to include("app/controllers/users_controller.rb")
+      expect(prompt).not_to include("app/controllers/users_controller.rb")
       expect(prompt).to include("app/models/concerns/auditable.rb")
       expect(prompt).to include("Auditable")
       expect(prompt).to include("## TASK")
@@ -1226,6 +1225,64 @@ RSpec.describe Pipeline::Pipeline do
       expect(prompt).to include("## PRIMARY")
       expect(prompt).to include("app/models/user.rb")
       expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/controllers\/concerns\/authenticatable\.rb/)
+    end
+
+    describe "M8.2-B task-aware context selection integration" do
+      before do
+        create_model_file(
+          "user",
+          <<~RUBY
+            class User < ApplicationRecord
+              validates_with CustomValidator
+            end
+          RUBY
+        )
+        create_controller_file(
+          "users_controller",
+          <<~RUBY
+            class UsersController < ApplicationController
+            end
+          RUBY
+        )
+        create_policy_file(
+          "user_policy",
+          <<~RUBY
+            class UserPolicy < ApplicationPolicy
+            end
+          RUBY
+        )
+        create_validator_file(
+          "custom_validator",
+          <<~RUBY
+            class CustomValidator < ActiveModel::Validator
+              def validate(record)
+              end
+            end
+          RUBY
+        )
+      end
+
+      it "selects model as primary and validator as required for 'Add a validation to User.', excluding controller and policy from required" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Add a validation to User.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/validators\/custom_validator\.rb/)
+        expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/controllers\/users_controller\.rb/)
+        expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/policies\/user_policy\.rb/)
+      end
+
+      it "preserves controller context for general edit request 'Update User'" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Update User")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/controllers\/users_controller\.rb/)
+      end
     end
   end
 end

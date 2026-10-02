@@ -1,5 +1,7 @@
 # lib/context_engine.rb
 require_relative "../indexing/project_index"
+require_relative "../context_rules/base_rule"
+require_relative "../context_rules/edit_model_rule"
 require_relative "context_ranker"
 
 class ContextEngine
@@ -23,6 +25,8 @@ class ContextEngine
     return unless model
 
     context = model[:context]
+    topic_sym = topic&.to_sym
+    specialized_edit = rule.is_a?(ContextRules::EditModelRule) && specialized_topic?(topic_sym)
 
     result = {
       target: entity
@@ -34,14 +38,15 @@ class ContextEngine
       ].compact
     end
 
-    if rule.include_controller?
-      result[:required] ||= []
-      result[:required] << context[:primary_controller] if context[:primary_controller]
-    end
+    result[:required] ||= [] if specialized_edit || rule.include_controller? || rule.include_policy?
+    unless specialized_edit
+      if rule.include_controller? && context[:primary_controller]
+        result[:required] << context[:primary_controller]
+      end
 
-    if rule.include_policy?
-      result[:required] ||= []
-      result[:required] << context[:primary_policy] if context[:primary_policy]
+      if rule.include_policy? && context[:primary_policy]
+        result[:required] << context[:primary_policy]
+      end
     end
 
     topic_files = topic_required_files(context, topic, association: association)
@@ -51,12 +56,16 @@ class ContextEngine
       result[:required].uniq!
     end
 
-    if rule.include_related_models? && !(topic&.to_sym == :association && association)
+    if rule.include_related_models?
       result[:related] =
-        Array(context[:related_models]).compact - (result[:required] || [])
+        if specialized_edit
+          []
+        elsif !(topic_sym == :association && association)
+          Array(context[:related_models]).compact - (result[:required] || [])
+        end
     end
 
-    if rule.include_views?
+    if rule.include_views? && !specialized_edit
       result[:optional] =
         Array(context[:primary_views]).compact
     end
@@ -67,6 +76,10 @@ class ContextEngine
   end
 
   private
+
+  def specialized_topic?(topic)
+    topic && topic != :general && TOPIC_REQUIRED_CATEGORIES.key?(topic)
+  end
 
   def topic_required_files(context, topic, association: nil)
     return [] unless topic && context
