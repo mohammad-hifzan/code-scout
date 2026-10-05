@@ -1284,5 +1284,68 @@ RSpec.describe Pipeline::Pipeline do
         expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/controllers\/users_controller\.rb/)
       end
     end
+
+    describe "M8.3 natural-language job and mailer integration" do
+      before do
+        create_policy_file(
+          "user_policy",
+          <<~RUBY
+            class UserPolicy < ApplicationPolicy
+            end
+          RUBY
+        )
+        create_job_file(
+          "user_job",
+          <<~RUBY
+            class UserJob < ApplicationJob
+              def perform(user_id)
+                User.find(user_id).process!
+              end
+            end
+          RUBY
+        )
+        create_mailer_file(
+          "user_mailer",
+          <<~RUBY
+            class UserMailer < ApplicationMailer
+              def welcome_email(user_id)
+                @user = User.find(user_id)
+                mail(to: @user.email, subject: "Welcome")
+              end
+            end
+          RUBY
+        )
+        create_mailer_view_file(
+          "user_mailer/welcome.html.erb",
+          <<~ERB
+            <h1>Welcome <%= @user.name %></h1>
+          ERB
+        )
+      end
+
+      it "selects model as primary and job in required for 'Change User job behavior.', excluding controller and policy" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change User job behavior.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/jobs\/user_job\.rb/)
+        expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/controllers\/users_controller\.rb/)
+        expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/policies\/user_policy\.rb/)
+      end
+
+      it "selects model as primary and mailer/templates in required for 'Change User mailer.', excluding controller" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change User mailer.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/mailers\/user_mailer\.rb/)
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/views\/user_mailer\/welcome\.html\.erb/)
+        expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/controllers\/users_controller\.rb/)
+      end
+    end
   end
 end

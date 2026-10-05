@@ -344,7 +344,7 @@ RSpec.describe RequestAnalyzer do
         expect(analyzer.analyze("Email User after registration")).to eq(action: :edit, entity: "User", topic: :general)
         expect(analyzer.analyze("Notify User by email")).to eq(action: :edit, entity: "User", topic: :general)
         expect(analyzer.analyze("Change User notification email")).to eq(action: :edit, entity: "User", topic: :general)
-        expect(analyzer.analyze("Why isn't the User email being sent?")).to eq(action: :explain, entity: "User", topic: :general)
+        expect(analyzer.analyze("Why isn't the User email being sent?")).to eq(action: :debug, entity: "User", topic: :mailer)
         expect(analyzer.analyze("Change notification preferences for User")).to eq(action: :edit, entity: "User", topic: :general)
         expect(analyzer.analyze("Change email preferences for User")).to eq(action: :edit, entity: "User", topic: :general)
       end
@@ -622,6 +622,128 @@ RSpec.describe RequestAnalyzer do
         entity: "User",
         topic: :validation
       )
+    end
+  end
+
+  describe "natural-language topic intent preservation for jobs and mailers (M8.3)" do
+    let(:analyzer) { described_class.new(models: ["User", "Admin::User"]) }
+
+    describe "positive job intent" do
+      it "classifies edit request with 'User job behavior' as :job" do
+        expect(analyzer.analyze("Change User job behavior.")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :job
+        )
+      end
+
+      it "classifies natural-language job relationship 'the job that processes User' as :job" do
+        expect(analyzer.analyze("Change the job that processes User.")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :job
+        )
+      end
+
+      it "classifies worker terminology 'User worker behavior' as :job" do
+        expect(analyzer.analyze("Change User worker behavior.")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :job
+        )
+      end
+
+      it "classifies debug request 'Why did the User job fail?' as debug action and :job topic" do
+        expect(analyzer.analyze("Why did the User job fail?")).to eq(
+          action: :debug,
+          entity: "User",
+          topic: :job
+        )
+      end
+
+      it "preserves existing PascalCase job and worker classification" do
+        expect(analyzer.analyze("Change UserJob")).to eq(action: :edit, entity: "User", topic: :job)
+        expect(analyzer.analyze("Change UserWorker")).to eq(action: :edit, entity: "User", topic: :job)
+        expect(analyzer.analyze("Change Admin::UserJob")).to eq(action: :edit, entity: "Admin::User", topic: :job)
+        expect(analyzer.analyze("Change Admin::UserWorker")).to eq(action: :edit, entity: "Admin::User", topic: :job)
+      end
+    end
+
+    describe "job false-positive protection" do
+      it "does not classify conversational use of 'good job' as a job task" do
+        result = analyzer.analyze("Change the User description to say good job.")
+        expect(result[:topic]).to eq(:general)
+      end
+
+      it "does not classify conversational use of 'hard worker' as a job task" do
+        result = analyzer.analyze("Change User profile to say hard worker.")
+        expect(result[:topic]).to eq(:general)
+      end
+    end
+
+    describe "positive mailer intent" do
+      it "classifies explicit mailer request 'Change User mailer.' as :mailer" do
+        expect(analyzer.analyze("Change User mailer.")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :mailer
+        )
+      end
+
+      it "classifies email delivery request 'Change the email sent when User is created.' as :mailer" do
+        expect(analyzer.analyze("Change the email sent when User is created.")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :mailer
+        )
+      end
+
+      it "classifies email notification request 'Change User email notification.' as :mailer" do
+        expect(analyzer.analyze("Change User email notification.")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :mailer
+        )
+      end
+
+      it "classifies debug email delivery 'Why isn't the User email being sent?' as debug action and :mailer topic" do
+        expect(analyzer.analyze("Why isn't the User email being sent?")).to eq(
+          action: :debug,
+          entity: "User",
+          topic: :mailer
+        )
+      end
+    end
+
+    describe "mailer false-positive protection" do
+      it "does not classify 'Change User email validation.' as a mailer task" do
+        result = analyzer.analyze("Change User email validation.")
+        expect(result[:topic]).to eq(:validation)
+      end
+
+      it "does not classify 'Add email to User.' as a mailer task" do
+        result = analyzer.analyze("Add email to User.")
+        expect(result[:topic]).to eq(:general)
+      end
+    end
+
+    describe "topic precedence and multi-topic safety" do
+      it "safely falls back to :general when validation and job signals compete" do
+        result = analyzer.analyze("Change User validation and job behavior.")
+        expect(result[:topic]).to eq(:general)
+      end
+
+      it "safely falls back to :general when mailer and serialization signals compete" do
+        result = analyzer.analyze("Change User mailer and serializer.")
+        expect(result[:topic]).to eq(:general)
+      end
+    end
+
+    describe "debug action boundary" do
+      it "does not treat words containing 'fail' such as 'failover' in an edit request as a debug action" do
+        result = analyzer.analyze("Change User failover configuration.")
+        expect(result[:action]).to eq(:edit)
+      end
     end
   end
 end

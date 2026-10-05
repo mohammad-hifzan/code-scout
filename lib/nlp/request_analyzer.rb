@@ -33,6 +33,11 @@ class RequestAnalyzer
     stacktrace
   ].freeze
 
+  DEBUG_PATTERNS = [
+    /\bfails?\b/i,
+    /\bisn't\b/i
+  ].freeze
+
   TOPIC_PATTERNS = {
     validation: [
       /\bvalidat(ion|e|es|or|ions|ors)\b/i,
@@ -49,16 +54,20 @@ class RequestAnalyzer
       /\b(?:sidekiq|active_?job|resque|shoryuken)\b/i,
       /\b(?:perform_later|perform_async|perform_now|perform_in|perform_at)\b/i,
       /\bperform\s+method\b/i,
-      /\b\w+\s+(?:job|worker)(?:s)?\s+(?:is|are|failing|failed|broken|error|failure)\b/i,
-      /\b(?:the\s+)?\w+\s+(?:job|worker)(?:s)?\s+failing\b/i
+      /\b\w+\s+(?:job|worker)(?:s)?\s+(?:is|are|failing|failed|fail|fails|broken|error|failure)\b/i,
+      /\b(?:the\s+)?\w+\s+(?:job|worker)(?:s)?\s+failing\b/i,
+      /\b(?:job|worker)s?\s+behavior\b/i,
+      /\b(?:the\s+)?(?:job|worker)s?\s+(?:that|to|for)\b/i
     ],
     mailer: [
-      /\b[A-Za-z0-9_:]+mailer(s)?\b/i,
+      /\b[A-Za-z0-9_:]*mailer(s)?\b/i,
       /\b(?:email|mailer)\s+template(s)?\b/i,
       /\bemail\s+delivery\b/i,
       /\bdeliver\s+mail\b/i,
       /\b(?:deliver_later|deliver_now)\b/i,
-      /\baction_?mailer\b/i
+      /\baction_?mailer\b/i,
+      /\bemails?\s+(?:being\s+)?sent\b/i,
+      /\bemails?\s+notification(s)?\b/i
     ],
     service: [
       /\bservice\s+object(s)?\b/i,
@@ -163,6 +172,7 @@ class RequestAnalyzer
 
     # Debug signals (e.g. "NoMethodError", "debug", "broken", "failing", "bug", "exception")
     return :debug if DEBUG_KEYWORDS.any? { |k| text.include?(k) }
+    return :debug if DEBUG_PATTERNS.any? { |pattern| text.match?(pattern) }
 
     # Explicit edit commands take precedence over explanation words like "how"
     return :edit if EDIT_KEYWORDS.any? { |k| text.match?(/\b#{Regexp.escape(k)}\b/i) }
