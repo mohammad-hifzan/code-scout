@@ -1347,5 +1347,21 @@ RSpec.describe Pipeline::Pipeline do
         expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/controllers\/users_controller\.rb/)
       end
     end
+
+    describe "M9.1 compound service artifact resolution integration" do
+      it "resolves Change UserRegistrationService end-to-end to model User as primary" do
+        create_model_file("user", "class User < ApplicationRecord\nend")
+        create_service_file("user_service", "class UserService; end")
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change UserRegistrationService.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/services\/user_service\.rb/)
+        expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/controllers\/users_controller\.rb/)
+      end
+    end
   end
 end

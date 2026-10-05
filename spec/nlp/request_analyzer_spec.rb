@@ -746,4 +746,150 @@ RSpec.describe RequestAnalyzer do
       end
     end
   end
+
+  describe "compound service artifact resolution (M9.1)" do
+    let(:analyzer) { described_class.new(models: ["User", "Admin::User"]) }
+
+    describe "positive service artifact resolution" do
+      it "resolves simple UserService to model User" do
+        expect(analyzer.analyze("Change UserService.")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :service
+        )
+      end
+
+      it "resolves compound UserRegistrationService to model User" do
+        expect(analyzer.analyze("Change UserRegistrationService.")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :service
+        )
+      end
+
+      it "resolves namespaced Admin::UserService to model Admin::User" do
+        expect(analyzer.analyze("Change Admin::UserService.")).to eq(
+          action: :edit,
+          entity: "Admin::User",
+          topic: :service
+        )
+      end
+
+      it "resolves compound namespaced Admin::UserRegistrationService to model Admin::User" do
+        expect(analyzer.analyze("Change Admin::UserRegistrationService.")).to eq(
+          action: :edit,
+          entity: "Admin::User",
+          topic: :service
+        )
+      end
+    end
+
+    describe "existing artifact regression safety" do
+      it "preserves resolution for non-service compound artifacts" do
+        expect(analyzer.analyze("Change UserSerializer.")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :serialization
+        )
+        expect(analyzer.analyze("Change UserPolicy.")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :policy
+        )
+        expect(analyzer.analyze("Change UserJob.")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :job
+        )
+        expect(analyzer.analyze("Change UserWorker.")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :job
+        )
+        expect(analyzer.analyze("Change UserMailer.")).to eq(
+          action: :edit,
+          entity: "User",
+          topic: :mailer
+        )
+      end
+
+      it "preserves resolution for namespaced non-service compound artifacts" do
+        expect(analyzer.analyze("Change Admin::UserSerializer.")).to eq(
+          action: :edit,
+          entity: "Admin::User",
+          topic: :serialization
+        )
+        expect(analyzer.analyze("Change Admin::UserPolicy.")).to eq(
+          action: :edit,
+          entity: "Admin::User",
+          topic: :policy
+        )
+        expect(analyzer.analyze("Change Admin::UserJob.")).to eq(
+          action: :edit,
+          entity: "Admin::User",
+          topic: :job
+        )
+        expect(analyzer.analyze("Change Admin::UserWorker.")).to eq(
+          action: :edit,
+          entity: "Admin::User",
+          topic: :job
+        )
+        expect(analyzer.analyze("Change Admin::UserMailer.")).to eq(
+          action: :edit,
+          entity: "Admin::User",
+          topic: :mailer
+        )
+      end
+    end
+
+    describe "model-name protection" do
+      it "preserves ordinary model entity resolution when UserRegistration is an actual model" do
+        model_analyzer = described_class.new(models: ["User", "UserRegistration"])
+        expect(model_analyzer.analyze("Change UserRegistration.")).to eq(
+          action: :edit,
+          entity: "UserRegistration",
+          topic: :general
+        )
+      end
+    end
+
+    describe "overlapping model names (longer model wins)" do
+      it "resolves to longer model when base names overlap (Case 1: User vs UserProfile)" do
+        overlapping_analyzer = described_class.new(models: ["User", "UserProfile"])
+        expect(overlapping_analyzer.analyze("Change UserProfileRegistrationService.")).to eq(
+          action: :edit,
+          entity: "UserProfile",
+          topic: :service
+        )
+      end
+
+      it "resolves to longer namespaced model when names overlap (Case 2: Admin::User vs Admin::UserProfile)" do
+        overlapping_analyzer = described_class.new(models: ["Admin::User", "Admin::UserProfile"])
+        expect(overlapping_analyzer.analyze("Change Admin::UserProfileRegistrationService.")).to eq(
+          action: :edit,
+          entity: "Admin::UserProfile",
+          topic: :service
+        )
+      end
+    end
+
+    describe "fail-closed and boundary behavior" do
+      it "fails closed and returns entity: nil when service artifact cannot be mapped to any project model" do
+        expect(analyzer.analyze("Change PaymentProcessingService.")).to eq(
+          action: :edit,
+          entity: nil,
+          topic: :service
+        )
+      end
+
+      it "does not match model prefix without valid word boundary (Case 3: Post in PostcardService)" do
+        post_analyzer = described_class.new(models: ["Post"])
+        expect(post_analyzer.analyze("Change PostcardService.")).to eq(
+          action: :edit,
+          entity: nil,
+          topic: :service
+        )
+      end
+    end
+  end
 end

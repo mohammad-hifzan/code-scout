@@ -216,6 +216,11 @@ class RequestAnalyzer
         base = downcased[0...-suffix.length].sub(/_\z/, "")
         matched = lookup[base] || lookup[singularize(base)]
         return matched if matched
+
+        if suffix == "service"
+          matched = resolve_compound_service(token, base, lookup)
+          return matched if matched
+        end
       end
 
       singular = singularize(downcased)
@@ -223,7 +228,26 @@ class RequestAnalyzer
         base = singular[0...-suffix.length].sub(/_\z/, "")
         matched = lookup[base] || lookup[singularize(base)]
         return matched if matched
+
+        if suffix == "service"
+          matched = resolve_compound_service(token, base, lookup)
+          return matched if matched
+        end
       end
+    end
+
+    nil
+  end
+
+  def resolve_compound_service(token, base, lookup)
+    matching_keys = lookup.keys.select { |k| base.start_with?(k) }
+    matching_keys.sort_by! { |k| -k.length }
+
+    matching_keys.each do |k|
+      next unless token[0...k.length].downcase == k
+
+      boundary_char = token[k.length]
+      return lookup[k] if boundary_char =~ /[A-Z_]/
     end
 
     nil
