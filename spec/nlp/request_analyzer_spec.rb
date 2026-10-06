@@ -892,4 +892,40 @@ RSpec.describe RequestAnalyzer do
       end
     end
   end
+
+  describe "natural-language service intent extraction (M9.2)" do
+    let(:analyzer) { described_class.new(models: ["User", "Admin::User"]) }
+
+    it "extracts service action for natural-language registration request" do
+      result = analyzer.analyze("Change the service used for User registration.")
+      expect(result[:action]).to eq(:edit)
+      expect(result[:entity]).to eq("User")
+      expect(result[:topic]).to eq(:service)
+      expect(result[:service_action]).to eq("registration")
+    end
+
+    it "extracts service action for natural-language import request" do
+      result = analyzer.analyze("Change the service that imports Users.")
+      expect(result[:action]).to eq(:edit)
+      expect(result[:entity]).to eq("User")
+      expect(result[:topic]).to eq(:service)
+      expect(result[:service_action]).to eq("import")
+    end
+
+    it "returns nil service_action for ambiguous natural-language service request" do
+      result = analyzer.analyze("Change the service for User.")
+      expect(result[:action]).to eq(:edit)
+      expect(result[:entity]).to eq("User")
+      expect(result[:topic]).to eq(:service)
+      expect(result[:service_action]).to be_nil
+    end
+
+    it "prefers nil service_action over false-positive verb when request uses generic filler verbs" do
+      result = analyzer.analyze("Change the service that handles User registration requests.")
+      expect(result[:action]).to eq(:edit)
+      expect(result[:entity]).to eq("User")
+      expect(result[:topic]).to eq(:service)
+      expect(result[:service_action]).to be_nil
+    end
+  end
 end

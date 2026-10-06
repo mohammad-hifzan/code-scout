@@ -38,14 +38,19 @@ module Pipeline
           @project_path
         )
 
+      build_args = {
+        rule: rule,
+        topic: analysis[:topic] || :general,
+        association: analysis[:association]
+      }
+      build_args[:service_action] = analysis[:service_action] if analysis.key?(:service_action)
+
       context =
         ContextEngine
           .new(index)
           .build(
             analysis[:entity],
-            rule: rule,
-            topic: analysis[:topic] || :general,
-            association: analysis[:association]
+            **build_args
           )
 
       return unless context

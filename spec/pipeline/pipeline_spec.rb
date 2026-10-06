@@ -1363,5 +1363,129 @@ RSpec.describe Pipeline::Pipeline do
         expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/controllers\/users_controller\.rb/)
       end
     end
+
+    describe "M9.2 natural-language service discovery integration" do
+      it "Category 1: resolves natural-language service intent 'Change the service used for User registration.' to user_registration_service" do
+        create_model_file("user", "class User < ApplicationRecord\nend")
+        create_service_file("user_registration_service", "class UserRegistrationService; end")
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change the service used for User registration.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/services\/user_registration_service\.rb/)
+        expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/controllers\/users_controller\.rb/)
+        expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/policies\/user_policy\.rb/)
+      end
+
+      it "Category 2: resolves another service action 'Change the service that imports Users.' to user_import_service" do
+        create_model_file("user", "class User < ApplicationRecord\nend")
+        create_service_file("user_import_service", "class UserImportService; end")
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change the service that imports Users.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/services\/user_import_service\.rb/)
+      end
+
+      it "Category 3: selects only the requested service among multiple services for one model" do
+        create_model_file("user", "class User < ApplicationRecord\nend")
+        create_service_file("user_registration_service", "class UserRegistrationService; end")
+        create_service_file("user_import_service", "class UserImportService; end")
+        create_service_file("user_cleanup_service", "class UserCleanupService; end")
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change the service used for User registration.")
+
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/services\/user_registration_service\.rb/)
+        expect(prompt).not_to include("app/services/user_import_service.rb")
+        expect(prompt).not_to include("app/services/user_cleanup_service.rb")
+      end
+
+      it "Category 4: excludes unrelated services for other models" do
+        create_model_file("user", "class User < ApplicationRecord\nend")
+        create_service_file("user_registration_service", "class UserRegistrationService; end")
+        create_service_file("account_cleanup_service", "class AccountCleanupService; end")
+        create_service_file("payment_service", "class PaymentService; end")
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change the service used for User registration.")
+
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/services\/user_registration_service\.rb/)
+        expect(prompt).not_to include("app/services/account_cleanup_service.rb")
+        expect(prompt).not_to include("app/services/payment_service.rb")
+      end
+
+      it "Category 5: fails closed on ambiguous request 'Change the service for User.' when multiple candidates exist" do
+        create_model_file("user", "class User < ApplicationRecord\nend")
+        create_service_file("user_registration_service", "class UserRegistrationService; end")
+        create_service_file("user_import_service", "class UserImportService; end")
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change the service for User.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).not_to include("app/services/user_registration_service.rb")
+        expect(prompt).not_to include("app/services/user_import_service.rb")
+      end
+
+      it "Category 6: fails closed and does not invent non-existent service files when no matching service exists on disk" do
+        create_model_file("user", "class User < ApplicationRecord\nend")
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change the service used for User registration.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).not_to include("app/services/user_registration_service.rb")
+      end
+
+      it "Category 7: preserves M9.1 explicit compound service artifact resolution for 'Change UserRegistrationService.'" do
+        create_model_file("user", "class User < ApplicationRecord\nend")
+        create_service_file("user_service", "class UserService; end")
+        create_service_file("user_registration_service", "class UserRegistrationService; end")
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change UserRegistrationService.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).not_to match(/## REQUIRED\n\nFile: .*?app\/controllers\/users_controller\.rb/)
+      end
+
+      it "adversarial boundary: selects exact action service and excludes compound sibling action service (registration vs registration_cleanup)" do
+        create_model_file("user", "class User < ApplicationRecord\nend")
+        create_service_file("user_registration_service", "class UserRegistrationService; end")
+        create_service_file("user_registration_cleanup_service", "class UserRegistrationCleanupService; end")
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change the service used for User registration.")
+
+        expect(prompt).to match(/## REQUIRED\n\nFile: .*?app\/services\/user_registration_service\.rb/)
+        expect(prompt).not_to include("app/services/user_registration_cleanup_service.rb")
+      end
+
+      it "adversarial boundary: fails closed when only compound sibling action service exists" do
+        create_model_file("user", "class User < ApplicationRecord\nend")
+        create_service_file("user_registration_cleanup_service", "class UserRegistrationCleanupService; end")
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change the service used for User registration.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).not_to include("app/services/user_registration_cleanup_service.rb")
+      end
+    end
   end
 end

@@ -147,6 +147,58 @@ class RequestAnalyzer
     relationships
   ].freeze
 
+  SERVICE_ACTION_STOP_WORDS = %w[
+    the
+    a
+    an
+    this
+    that
+    these
+    those
+    my
+    our
+    your
+    their
+    its
+    for
+    to
+    of
+    in
+    on
+    at
+    by
+    with
+    and
+    or
+    is
+    are
+    used
+    service
+    services
+    object
+    objects
+    model
+    record
+    entity
+    handle
+    handles
+    handl
+    manage
+    manages
+    process
+    processes
+    perform
+    performs
+    provide
+    provides
+    execute
+    executes
+    run
+    runs
+    do
+    does
+  ].freeze
+
   def initialize(models: [])
     @models = models || []
   end
@@ -162,6 +214,10 @@ class RequestAnalyzer
     }
 
     result[:association] = detect_association(request, result[:entity]) if topic == :association
+    if topic == :service
+      service_action = detect_service_action(request, result[:entity])
+      result[:service_action] = service_action if service_action
+    end
     result
   end
 
@@ -291,6 +347,24 @@ class RequestAnalyzer
     if (m = text.match(/\b(?:association|relationship)s?\s+:?([a-z0-9_]+)\b/i))
       candidate = m[1].downcase
       return candidate unless ASSOCIATION_STOP_WORDS.include?(candidate) || candidate == entity&.downcase
+    end
+
+    nil
+  end
+
+  def detect_service_action(request, entity)
+    text = request.to_s
+
+    # 1. "service that/which/to <action>" e.g. "service that imports Users" -> "import"
+    if (m = text.match(/\bservice\s+(?:object\s+)?(?:that|which|to)\s+([a-z0-9_]+)\b/i))
+      candidate = singularize(m[1].downcase)
+      return candidate unless SERVICE_ACTION_STOP_WORDS.include?(candidate) || candidate == entity&.downcase
+    end
+
+    # 2. "service used for / for ... <action>" e.g. "service used for User registration" -> "registration"
+    if (m = text.match(/\bservice\s+(?:object\s+)?(?:used\s+for|for)\s+(?:the\s+)?(?:[a-z0-9_:]+(?:'s|')?\s+)*([a-z0-9_]+)\b/i))
+      candidate = singularize(m[1].downcase)
+      return candidate unless SERVICE_ACTION_STOP_WORDS.include?(candidate) || candidate == entity&.downcase
     end
 
     nil

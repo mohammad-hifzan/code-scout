@@ -20,7 +20,7 @@ class ContextEngine
     @project_index = project_index
   end
 
-  def build(entity, rule:, topic: :general, association: nil)
+  def build(entity, rule:, topic: :general, association: nil, service_action: nil)
     model = @project_index.model(entity)
     return unless model
 
@@ -49,7 +49,7 @@ class ContextEngine
       end
     end
 
-    topic_files = topic_required_files(context, topic, association: association)
+    topic_files = topic_required_files(context, topic, association: association, service_action: service_action)
     if topic_files.any?
       result[:required] ||= []
       result[:required].concat(topic_files)
@@ -81,7 +81,7 @@ class ContextEngine
     topic && topic != :general && TOPIC_REQUIRED_CATEGORIES.key?(topic)
   end
 
-  def topic_required_files(context, topic, association: nil)
+  def topic_required_files(context, topic, association: nil, service_action: nil)
     return [] unless topic && context
 
     if topic.to_sym == :association && association
@@ -89,8 +89,74 @@ class ContextEngine
       return target ? [target] : []
     end
 
+    if topic.to_sym == :service
+      return select_service_files(context, service_action)
+    end
+
     categories = TOPIC_REQUIRED_CATEGORIES.fetch(topic.to_sym, [])
     categories.flat_map { |category| Array(context[category]).compact }
+  end
+
+  def select_service_files(context, service_action)
+    services = Array(context[:services]).compact.uniq
+    return [] if services.empty?
+
+    model_name = context[:model] ? File.basename(context[:model], ".rb") : nil
+
+    if service_action && !service_action.empty?
+      action_clean = service_action.to_s.downcase
+      matched = services.select do |file|
+        service_file_matches_action?(file, action_clean, model_name)
+      end
+      return matched.take(1) if matched.size == 1
+      return []
+    end
+
+    # Ambiguous or general service selection when service_action is nil:
+    # If a standard conventional service (e.g. user_service.rb) is present, return it.
+    if model_name
+      conventional_match = services.find do |file|
+        File.basename(file, ".rb").downcase == "#{model_name}_service".downcase
+      end
+      return [conventional_match] if conventional_match
+    end
+
+    # If only 1 service exists overall, return it
+    return services if services.size == 1
+
+    # Otherwise (multiple non-conventional services without a service_action), fail closed
+    []
+  end
+
+  def service_file_matches_action?(file, action, model_name)
+    action_comp = extract_service_action_component(file, model_name)
+    action_comp == action || singularize(action_comp) == action || action_comp == singularize(action)
+  end
+
+  def extract_service_action_component(file, model_name)
+    basename = File.basename(file, ".rb").downcase
+    model_prefix = (model_name || "").downcase
+    if !model_prefix.empty? && basename.start_with?("#{model_prefix}_") && basename.end_with?("_service")
+      basename.delete_prefix("#{model_prefix}_").delete_suffix("_service")
+    elsif basename.end_with?("_service")
+      basename.delete_suffix("_service")
+    else
+      basename
+    end
+  end
+
+  def singularize(word)
+    return word if word.nil? || word.empty?
+
+    if word.end_with?("ies") && word.length > 3
+      word[0..-4] + "y"
+    elsif word.end_with?("es") && word.length > 2
+      word[0..-3]
+    elsif word.end_with?("s") && !word.end_with?("ss") && word.length > 1
+      word[0..-2]
+    else
+      word
+    end
   end
 
   def primary_files(context)

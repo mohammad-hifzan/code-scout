@@ -303,12 +303,45 @@ class ContextBuilder
     services_root = File.expand_path(File.join(project_path, "app/services"))
     services_prefix = "#{services_root}/"
 
-    relative_file = "#{model_name.underscore}_service.rb"
-    candidate = File.expand_path(File.join(services_root, relative_file))
+    base_underscored = model_name.underscore
+    candidates = []
 
-    return [] unless candidate.start_with?(services_prefix)
-    return [] unless File.exist?(candidate)
+    conventional = File.expand_path(File.join(services_root, "#{base_underscored}_service.rb"))
+    candidates << conventional if conventional.start_with?(services_prefix) && File.exist?(conventional)
 
-    [candidate]
+    if File.directory?(services_root)
+      patterns = [
+        File.join(services_root, "#{base_underscored}_*_service.rb"),
+        File.join(services_root, base_underscored, "**/*_service.rb")
+      ]
+      Dir.glob(patterns).each do |file|
+        candidate = File.expand_path(file)
+        next unless candidate.start_with?(services_prefix)
+        next unless File.file?(candidate)
+        next if more_specific_model_exists?(candidate, model_name)
+
+        candidates << candidate
+      end
+    end
+
+    candidates.uniq
+  end
+
+  def more_specific_model_exists?(file_path, current_model)
+    return false unless project_map && project_map[:models]
+
+    filename = File.basename(file_path, ".rb")
+    current_prefix = current_model.underscore
+
+    project_map[:models].keys.any? do |other_model|
+      next false if other_model == current_model
+
+      other_prefix = other_model.underscore
+      if other_prefix.start_with?("#{current_prefix}_") && (filename.start_with?("#{other_prefix}_") || filename == "#{other_prefix}_service")
+        true
+      else
+        false
+      end
+    end
   end
 end

@@ -934,6 +934,40 @@ RSpec.describe ContextEngine do
             end
           end
         end
+
+        describe 'under M9.2 natural-language service selection contract' do
+          let(:edit_rule) { ContextRules::EditModelRule.new }
+          let(:model_context) do
+            super().merge(
+              services: [
+                'app/services/user_registration_service.rb',
+                'app/services/user_import_service.rb',
+                'app/services/user_cleanup_service.rb'
+              ]
+            )
+          end
+
+          it 'selects only the matching service candidate when service_action is provided' do
+            result = engine.build(entity, rule: edit_rule, topic: :service, service_action: 'registration')
+            expect(result[:required]).to include('app/services/user_registration_service.rb')
+            expect(result[:required]).not_to include('app/services/user_import_service.rb')
+            expect(result[:required]).not_to include('app/services/user_cleanup_service.rb')
+          end
+
+          it 'selects only the matching import service candidate when service_action is import' do
+            result = engine.build(entity, rule: edit_rule, topic: :service, service_action: 'import')
+            expect(result[:required]).to include('app/services/user_import_service.rb')
+            expect(result[:required]).not_to include('app/services/user_registration_service.rb')
+            expect(result[:required]).not_to include('app/services/user_cleanup_service.rb')
+          end
+
+          it 'fails closed and does not arbitrarily select any candidate when service_action is nil' do
+            result = engine.build(entity, rule: edit_rule, topic: :service, service_action: nil)
+            expect(result[:required]).not_to include('app/services/user_registration_service.rb')
+            expect(result[:required]).not_to include('app/services/user_import_service.rb')
+            expect(result[:required]).not_to include('app/services/user_cleanup_service.rb')
+          end
+        end
       end
     end
   end
