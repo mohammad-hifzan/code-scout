@@ -44,6 +44,7 @@ module Pipeline
         association: analysis[:association]
       }
       build_args[:service_action] = analysis[:service_action] if analysis.key?(:service_action)
+      build_args[:concern_name] = analysis[:concern_name] if analysis.key?(:concern_name)
 
       context =
         ContextEngine

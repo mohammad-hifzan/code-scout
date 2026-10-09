@@ -968,6 +968,64 @@ RSpec.describe ContextEngine do
             expect(result[:required]).not_to include('app/services/user_cleanup_service.rb')
           end
         end
+
+        describe 'under M10.1 concern selection contract' do
+          let(:edit_rule) { ContextRules::EditModelRule.new }
+          let(:model_context) do
+            super().merge(
+              concerns: [
+                'app/models/concerns/auditable.rb',
+                'app/models/concerns/admin/auditable.rb',
+                'app/models/concerns/searchable.rb',
+                'app/models/concerns/searchable_index.rb'
+              ]
+            )
+          end
+
+          it 'selects only the matching concern candidate when concern_name is provided' do
+            result = engine.build(entity, rule: edit_rule, topic: :concern, concern_name: 'Auditable')
+            expect(result[:required]).to include('app/models/concerns/auditable.rb')
+            expect(result[:required]).not_to include('app/models/concerns/admin/auditable.rb')
+            expect(result[:required]).not_to include('app/models/concerns/searchable.rb')
+            expect(result[:required]).not_to include('app/models/concerns/searchable_index.rb')
+          end
+
+          it 'fails closed and returns no concern when named concern does not exist' do
+            result = engine.build(entity, rule: edit_rule, topic: :concern, concern_name: 'Nonexistent')
+            expect(result[:required]).not_to include('app/models/concerns/auditable.rb')
+            expect(result[:required]).not_to include('app/models/concerns/admin/auditable.rb')
+            expect(result[:required]).not_to include('app/models/concerns/searchable.rb')
+            expect(result[:required]).not_to include('app/models/concerns/searchable_index.rb')
+          end
+
+          it 'preserves existing behavior and returns all discovered concerns when concern_name is nil' do
+            result = engine.build(entity, rule: edit_rule, topic: :concern, concern_name: nil)
+            expect(result[:required]).to include('app/models/concerns/auditable.rb')
+            expect(result[:required]).to include('app/models/concerns/admin/auditable.rb')
+            expect(result[:required]).to include('app/models/concerns/searchable.rb')
+            expect(result[:required]).to include('app/models/concerns/searchable_index.rb')
+          end
+
+          it 'does not select similarly named unrelated concern (e.g. Searchable vs SearchableIndex)' do
+            result = engine.build(entity, rule: edit_rule, topic: :concern, concern_name: 'Searchable')
+            expect(result[:required]).to include('app/models/concerns/searchable.rb')
+            expect(result[:required]).not_to include('app/models/concerns/searchable_index.rb')
+            expect(result[:required]).not_to include('app/models/concerns/auditable.rb')
+            expect(result[:required]).not_to include('app/models/concerns/admin/auditable.rb')
+          end
+
+          it 'does not select an unrelated nested concern with the same basename (Auditable vs Admin::Auditable)' do
+            result = engine.build(entity, rule: edit_rule, topic: :concern, concern_name: 'Auditable')
+            expect(result[:required]).to include('app/models/concerns/auditable.rb')
+            expect(result[:required]).not_to include('app/models/concerns/admin/auditable.rb')
+          end
+
+          it 'selects matching namespaced concern when namespaced concern is requested (Admin::Auditable)' do
+            result = engine.build(entity, rule: edit_rule, topic: :concern, concern_name: 'Admin::Auditable')
+            expect(result[:required]).to include('app/models/concerns/admin/auditable.rb')
+            expect(result[:required]).not_to include('app/models/concerns/auditable.rb')
+          end
+        end
       end
     end
   end

@@ -1487,5 +1487,111 @@ RSpec.describe Pipeline::Pipeline do
         expect(prompt).not_to include("app/services/user_registration_cleanup_service.rb")
       end
     end
+
+    describe "under M10.1 concern selection contract" do
+      before do
+        create_model_file(
+          "user",
+          <<~RUBY
+            class User < ApplicationRecord
+              include Auditable
+              include Searchable
+            end
+          RUBY
+        )
+        create_model_concern_file(
+          "auditable",
+          <<~RUBY
+            module Auditable
+              extend ActiveSupport::Concern
+            end
+          RUBY
+        )
+        create_model_concern_file(
+          "searchable",
+          <<~RUBY
+            module Searchable
+              extend ActiveSupport::Concern
+            end
+          RUBY
+        )
+      end
+
+      it "selects only the Auditable concern when Auditable is explicitly requested" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change the Auditable concern for User.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/models/concerns/auditable.rb")
+        expect(prompt).not_to include("app/models/concerns/searchable.rb")
+      end
+
+      it "selects only the Searchable concern when Searchable is explicitly requested" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change the Searchable concern for User.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/models/concerns/searchable.rb")
+        expect(prompt).not_to include("app/models/concerns/auditable.rb")
+      end
+
+      it "fails closed and does not include all concerns when a nonexistent named concern is requested" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change the Archivable concern for User.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).not_to include("app/models/concerns/auditable.rb")
+        expect(prompt).not_to include("app/models/concerns/searchable.rb")
+      end
+
+      it "preserves generic concern behavior when no specific concern name is provided" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change the concern for User.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).not_to include("app/models/concerns/auditable.rb")
+        expect(prompt).not_to include("app/models/concerns/searchable.rb")
+      end
+
+      it "preserves generic model concern behavior and includes all concerns when topic is concern but no specific name is given" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change the User model concern")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/models/concerns/auditable.rb")
+        expect(prompt).to include("app/models/concerns/searchable.rb")
+      end
+
+      it "propagates concern requests without breaking unrelated topics such as validation" do
+        create_validator_file(
+          "email_validator",
+          <<~RUBY
+            class EmailValidator < ActiveModel::EachValidator
+            end
+          RUBY
+        )
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Change User validation.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).not_to include("app/models/concerns/auditable.rb")
+        expect(prompt).not_to include("app/models/concerns/searchable.rb")
+      end
+    end
   end
 end

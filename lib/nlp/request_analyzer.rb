@@ -199,6 +199,31 @@ class RequestAnalyzer
     does
   ].freeze
 
+  CONCERN_STOP_WORDS = %w[
+    the
+    a
+    an
+    this
+    that
+    these
+    those
+    my
+    our
+    your
+    their
+    its
+    model
+    models
+    controller
+    controllers
+    active_support
+    activesupport
+    concern
+    concerns
+    mixin
+    mixins
+  ].freeze
+
   def initialize(models: [])
     @models = models || []
   end
@@ -217,6 +242,10 @@ class RequestAnalyzer
     if topic == :service
       service_action = detect_service_action(request, result[:entity])
       result[:service_action] = service_action if service_action
+    end
+    if topic == :concern
+      concern_name = detect_concern_name(request, result[:entity])
+      result[:concern_name] = concern_name if concern_name
     end
     result
   end
@@ -246,12 +275,20 @@ class RequestAnalyzer
     tokens = request.scan(/[A-Za-z0-9_:]+(?:'s|')?/i)
 
     # 1. Direct model name resolution
+    # Prefer exact non-concern model matches over concerns mapped as models
+    direct_matches = []
     tokens.each do |token|
       clean_token = token.sub(/'s\z/i, "").sub(/'\z/, "")
       downcased = clean_token.downcase
 
       matched = lookup[downcased] || lookup[singularize(downcased)]
-      return matched if matched
+      direct_matches << matched if matched
+    end
+
+    if direct_matches.any?
+      real_model = direct_matches.find { |m| !m.start_with?("Concerns::") }
+      return real_model if real_model
+      return direct_matches.first
     end
 
     # 2. Rails compound artifact resolution (e.g. UserSerializer -> User)
@@ -365,6 +402,20 @@ class RequestAnalyzer
     if (m = text.match(/\bservice\s+(?:object\s+)?(?:used\s+for|for)\s+(?:the\s+)?(?:[a-z0-9_:]+(?:'s|')?\s+)*([a-z0-9_]+)\b/i))
       candidate = singularize(m[1].downcase)
       return candidate unless SERVICE_ACTION_STOP_WORDS.include?(candidate) || candidate == entity&.downcase
+    end
+
+    nil
+  end
+
+  def detect_concern_name(request, entity)
+    text = request.to_s
+
+    # Matches explicit concern requests such as:
+    # "Change the Auditable concern for User."
+    # "Change the Searchable concern for User."
+    if (m = text.match(/\b(?:change|update|modify|refactor)\s+the\s+([A-Za-z0-9_:]+)\s+concern\s+for\b/i))
+      candidate = m[1]
+      return candidate unless CONCERN_STOP_WORDS.include?(candidate.downcase) || candidate.downcase == entity&.downcase
     end
 
     nil

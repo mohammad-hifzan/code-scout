@@ -1,4 +1,5 @@
 # lib/context_engine.rb
+require "active_support/inflector"
 require_relative "../indexing/project_index"
 require_relative "../context_rules/base_rule"
 require_relative "../context_rules/edit_model_rule"
@@ -20,7 +21,7 @@ class ContextEngine
     @project_index = project_index
   end
 
-  def build(entity, rule:, topic: :general, association: nil, service_action: nil)
+  def build(entity, rule:, topic: :general, association: nil, service_action: nil, concern_name: nil)
     model = @project_index.model(entity)
     return unless model
 
@@ -49,7 +50,7 @@ class ContextEngine
       end
     end
 
-    topic_files = topic_required_files(context, topic, association: association, service_action: service_action)
+    topic_files = topic_required_files(context, topic, association: association, service_action: service_action, concern_name: concern_name)
     if topic_files.any?
       result[:required] ||= []
       result[:required].concat(topic_files)
@@ -81,7 +82,7 @@ class ContextEngine
     topic && topic != :general && TOPIC_REQUIRED_CATEGORIES.key?(topic)
   end
 
-  def topic_required_files(context, topic, association: nil, service_action: nil)
+  def topic_required_files(context, topic, association: nil, service_action: nil, concern_name: nil)
     return [] unless topic && context
 
     if topic.to_sym == :association && association
@@ -93,8 +94,35 @@ class ContextEngine
       return select_service_files(context, service_action)
     end
 
+    if topic.to_sym == :concern
+      return select_concern_files(context, concern_name)
+    end
+
     categories = TOPIC_REQUIRED_CATEGORIES.fetch(topic.to_sym, [])
     categories.flat_map { |category| Array(context[category]).compact }
+  end
+
+  def select_concern_files(context, concern_name)
+    concerns = Array(context[:concerns]).compact.uniq
+    return [] if concerns.empty?
+
+    return concerns if concern_name.nil? || concern_name.empty?
+
+    expected = ActiveSupport::Inflector.underscore(concern_name.to_s).downcase
+    concerns.select do |file|
+      concern_relative_identifier(file) == expected
+    end
+  end
+
+  def concern_relative_identifier(path)
+    clean = path.to_s.sub(/\.rb\z/, "")
+    if (idx = clean.index("/concerns/"))
+      clean[(idx + 10)..-1].downcase
+    elsif (idx = clean.index("concerns/"))
+      clean[(idx + 9)..-1].downcase
+    else
+      File.basename(clean).downcase
+    end
   end
 
   def select_service_files(context, service_action)

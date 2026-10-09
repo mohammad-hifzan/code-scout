@@ -928,4 +928,76 @@ RSpec.describe RequestAnalyzer do
       expect(result[:service_action]).to be_nil
     end
   end
+
+  describe "explicit concern-name intent extraction (M10.1)" do
+    let(:analyzer) { described_class.new(models: ["User"]) }
+
+    it "extracts concern name for Auditable concern on User" do
+      result = analyzer.analyze("Change the Auditable concern for User.")
+      expect(result).to eq(
+        action: :edit,
+        entity: "User",
+        topic: :concern,
+        concern_name: "Auditable"
+      )
+    end
+
+    it "extracts concern name for Searchable concern on User" do
+      result = analyzer.analyze("Change the Searchable concern for User.")
+      expect(result).to eq(
+        action: :edit,
+        entity: "User",
+        topic: :concern,
+        concern_name: "Searchable"
+      )
+    end
+
+    it "returns no specific concern name for generic concern request" do
+      result = analyzer.analyze("Change the concern for User.")
+      expect(result[:action]).to eq(:edit)
+      expect(result[:entity]).to eq("User")
+      expect(result[:concern_name]).to be_nil
+    end
+
+    it "returns no specific concern name for generic model concern request" do
+      result = analyzer.analyze("Change the User model concern.")
+      expect(result[:action]).to eq(:edit)
+      expect(result[:entity]).to eq("User")
+      expect(result[:topic]).to eq(:concern)
+      expect(result[:concern_name]).to be_nil
+    end
+
+    it "leaves existing validation result unchanged" do
+      result = analyzer.analyze("Change User validation.")
+      expect(result).to eq(
+        action: :edit,
+        entity: "User",
+        topic: :validation
+      )
+      expect(result[:concern_name]).to be_nil
+    end
+
+    it "does not treat unrelated uses of concern as named-concern requests" do
+      expect(analyzer.analyze("Address security concern in User.")).to eq(
+        action: :edit,
+        entity: "User",
+        topic: :general
+      )
+      expect(analyzer.analyze("Discuss privacy concern for User.")).to eq(
+        action: :edit,
+        entity: "User",
+        topic: :general
+      )
+      expect(analyzer.analyze("This is a major performance concern for User.")).to eq(
+        action: :edit,
+        entity: "User",
+        topic: :general
+      )
+      expect(analyzer.analyze("Address User latency concerns.")).to eq(
+        action: :edit,
+        entity: "User",
+        topic: :general
+      )
+    end
+  end
 end
