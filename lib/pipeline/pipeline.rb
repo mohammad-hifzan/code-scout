@@ -43,6 +43,7 @@ module Pipeline
         topic: analysis[:topic] || :general,
         association: analysis[:association]
       }
+      build_args[:topics] = analysis[:topics] if analysis.key?(:topics)
       build_args[:service_action] = analysis[:service_action] if analysis.key?(:service_action)
       build_args[:concern_name] = analysis[:concern_name] if analysis.key?(:concern_name)
 

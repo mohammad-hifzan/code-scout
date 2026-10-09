@@ -21,13 +21,18 @@ class ContextEngine
     @project_index = project_index
   end
 
-  def build(entity, rule:, topic: :general, association: nil, service_action: nil, concern_name: nil)
+  def build(entity, rule:, topic: :general, topics: nil, association: nil, service_action: nil, concern_name: nil)
     model = @project_index.model(entity)
     return unless model
 
     context = model[:context]
     topic_sym = topic&.to_sym
-    specialized_edit = rule.is_a?(ContextRules::EditModelRule) && specialized_topic?(topic_sym)
+    is_specialized = if topics && !topics.empty?
+                       topics.any? { |t| specialized_topic?(t&.to_sym) }
+                     else
+                       specialized_topic?(topic_sym)
+                     end
+    specialized_edit = rule.is_a?(ContextRules::EditModelRule) && is_specialized
 
     result = {
       target: entity
@@ -50,7 +55,26 @@ class ContextEngine
       end
     end
 
-    topic_files = topic_required_files(context, topic, association: association, service_action: service_action, concern_name: concern_name)
+    topic_files = if topics && !topics.empty?
+                    topics.flat_map do |t|
+                      t_sym = t&.to_sym
+                      topic_required_files(
+                        context,
+                        t_sym,
+                        association: (t_sym == :association ? association : nil),
+                        service_action: (t_sym == :service ? service_action : nil),
+                        concern_name: (t_sym == :concern ? concern_name : nil)
+                      )
+                    end.uniq
+                  else
+                    topic_required_files(
+                      context,
+                      topic,
+                      association: association,
+                      service_action: service_action,
+                      concern_name: concern_name
+                    )
+                  end
     if topic_files.any?
       result[:required] ||= []
       result[:required].concat(topic_files)

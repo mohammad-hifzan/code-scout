@@ -1593,5 +1593,127 @@ RSpec.describe Pipeline::Pipeline do
         expect(prompt).not_to include("app/models/concerns/searchable.rb")
       end
     end
+
+    describe "under M11.1 multi-topic pipeline contract" do
+      before do
+        create_model_file("user", <<~RUBY)
+          class User < ApplicationRecord
+            validates :email, email: true
+          end
+        RUBY
+        create_controller_file("users_controller", <<~RUBY)
+          class UsersController < ApplicationController
+          end
+        RUBY
+        create_validator_file("email_validator", <<~RUBY)
+          class EmailValidator < ActiveModel::EachValidator
+          end
+        RUBY
+        create_serializer_file("user_serializer", <<~RUBY)
+          class UserSerializer
+          end
+        RUBY
+        create_policy_file("user_policy", <<~RUBY)
+          class UserPolicy
+          end
+        RUBY
+        create_job_file("user_job", <<~RUBY)
+          class UserJob < ApplicationJob
+          end
+        RUBY
+        create_mailer_file("user_mailer", <<~RUBY)
+          class UserMailer < ApplicationMailer
+          end
+        RUBY
+      end
+
+      it "selects validation and serializer context for validation + serialization on User" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Add validation to User and update its serializer.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/validators/email_validator.rb")
+        expect(prompt).to include("app/serializers/user_serializer.rb")
+
+        # Suppresses generic CRUD and unrelated specialized artifacts:
+        expect(prompt).not_to include("app/controllers/users_controller.rb")
+        expect(prompt).not_to include("app/policies/user_policy.rb")
+        expect(prompt).not_to include("app/jobs/user_job.rb")
+        expect(prompt).not_to include("app/mailers/user_mailer.rb")
+      end
+
+      it "selects job and mailer context for Job + Mailer on User" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Fix UserJob and update UserMailer.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/jobs/user_job.rb")
+        expect(prompt).to include("app/mailers/user_mailer.rb")
+
+        expect(prompt).not_to include("app/controllers/users_controller.rb")
+        expect(prompt).not_to include("app/serializers/user_serializer.rb")
+        expect(prompt).not_to include("app/validators/email_validator.rb")
+      end
+
+      it "selects policy and validation context for Policy + Validation on User" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Update User policy and add validation.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/policies/user_policy.rb")
+        expect(prompt).to include("app/validators/email_validator.rb")
+
+        expect(prompt).not_to include("app/controllers/users_controller.rb")
+        expect(prompt).not_to include("app/serializers/user_serializer.rb")
+        expect(prompt).not_to include("app/jobs/user_job.rb")
+      end
+
+      it "preserves single-topic validation request behavior without leaking other artifacts" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Add validation to User.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/validators/email_validator.rb")
+        expect(prompt).not_to include("app/serializers/user_serializer.rb")
+        expect(prompt).not_to include("app/jobs/user_job.rb")
+      end
+
+      it "preserves single-topic serialization request behavior without leaking other artifacts" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Update User serializer.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/serializers/user_serializer.rb")
+        expect(prompt).not_to include("app/validators/email_validator.rb")
+        expect(prompt).not_to include("app/jobs/user_job.rb")
+      end
+
+      it "does not trigger unrelated specialized context on incidental phrasing (job title)" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Update User's job title and serializer.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/serializers/user_serializer.rb")
+        expect(prompt).not_to include("app/jobs/user_job.rb")
+      end
+    end
   end
 end

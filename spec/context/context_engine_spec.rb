@@ -1026,6 +1026,108 @@ RSpec.describe ContextEngine do
             expect(result[:required]).not_to include('app/models/concerns/auditable.rb')
           end
         end
+
+        describe 'under M11.1 multi-topic selection contract' do
+          let(:edit_rule) { ContextRules::EditModelRule.new }
+          let(:model_context) do
+            super().merge(
+              related_models: ['app/models/account.rb', 'app/models/post.rb'],
+              associations: {
+                'account' => 'app/models/account.rb',
+                'posts' => 'app/models/post.rb'
+              },
+              services: [
+                'app/services/user_registration_service.rb',
+                'app/services/user_cleanup_service.rb'
+              ],
+              concerns: [
+                'app/models/concerns/auditable.rb'
+              ]
+            )
+          end
+
+          it 'selects validator and serializer artifacts for [:validation, :serialization]' do
+            result = engine.build(entity, rule: edit_rule, topic: :general, topics: [:validation, :serialization])
+            expect(result[:primary]).to include('user.rb')
+            expect(result[:required]).to include('email_domain_validator.rb', 'user_serializer.rb', 'users/show.json.jbuilder')
+            expect(result[:required]).not_to include('users_controller.rb')
+            expect(result[:required]).not_to include('user_policy.rb')
+            expect(Array(result[:related])).to be_empty
+            expect(Array(result[:optional])).to be_empty
+          end
+
+          it 'selects job and mailer artifacts (including mailer views) for [:job, :mailer]' do
+            result = engine.build(entity, rule: edit_rule, topic: :general, topics: [:job, :mailer])
+            expect(result[:primary]).to include('user.rb')
+            expect(result[:required]).to include('user_job.rb', 'user_worker.rb', 'user_mailer.rb', 'users/welcome.html.erb')
+            expect(result[:required]).not_to include('users_controller.rb')
+            expect(result[:required]).not_to include('user_policy.rb')
+            expect(Array(result[:related])).to be_empty
+            expect(Array(result[:optional])).to be_empty
+          end
+
+          it 'selects policy and validator artifacts for [:policy, :validation]' do
+            result = engine.build(entity, rule: edit_rule, topic: :general, topics: [:policy, :validation])
+            expect(result[:primary]).to include('user.rb')
+            expect(result[:required]).to include('user_policy.rb', 'email_domain_validator.rb')
+            expect(result[:required]).not_to include('users_controller.rb')
+            expect(Array(result[:related])).to be_empty
+            expect(Array(result[:optional])).to be_empty
+          end
+
+          it 'deduplicates required files and does not duplicate files on duplicate topics' do
+            result = engine.build(entity, rule: edit_rule, topic: :general, topics: [:validation, :validation])
+            expect(result[:required].count { |f| f == 'email_domain_validator.rb' }).to eq(1)
+            expect(Array(result[:related])).to be_empty
+          end
+
+          it 'preserves existing single-topic behavior when topics is nil or omitted' do
+            result = engine.build(entity, rule: edit_rule, topic: :validation)
+            expect(result[:required]).to include('email_domain_validator.rb')
+            expect(result[:required]).not_to include('user_serializer.rb')
+            expect(Array(result[:related])).to be_empty
+          end
+
+          describe 'metadata isolation across topics' do
+            it 'isolates association metadata to association topic only' do
+              result = engine.build(
+                entity,
+                rule: edit_rule,
+                topic: :general,
+                topics: [:association, :serialization],
+                association: 'posts'
+              )
+              expect(result[:required]).to include('app/models/post.rb', 'user_serializer.rb', 'users/show.json.jbuilder')
+              expect(result[:required]).not_to include('app/models/account.rb')
+              expect(result[:required]).not_to include('users_controller.rb')
+            end
+
+            it 'isolates service_action metadata to service topic only' do
+              result = engine.build(
+                entity,
+                rule: edit_rule,
+                topic: :general,
+                topics: [:service, :validation],
+                service_action: 'registration'
+              )
+              expect(result[:required]).to include('app/services/user_registration_service.rb', 'email_domain_validator.rb')
+              expect(result[:required]).not_to include('app/services/user_cleanup_service.rb')
+              expect(result[:required]).not_to include('users_controller.rb')
+            end
+
+            it 'isolates concern_name metadata to concern topic only' do
+              result = engine.build(
+                entity,
+                rule: edit_rule,
+                topic: :general,
+                topics: [:concern, :validation],
+                concern_name: 'Auditable'
+              )
+              expect(result[:required]).to include('app/models/concerns/auditable.rb', 'email_domain_validator.rb')
+              expect(result[:required]).not_to include('users_controller.rb')
+            end
+          end
+        end
       end
     end
   end

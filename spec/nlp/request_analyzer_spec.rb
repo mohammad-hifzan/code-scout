@@ -546,12 +546,14 @@ RSpec.describe RequestAnalyzer do
         expect(analyzer.analyze("Change UserSerializer and UserPolicy")).to eq(
           action: :edit,
           entity: "User",
-          topic: :general
+          topic: :general,
+          topics: [:serialization, :policy]
         )
         expect(analyzer.analyze("Change UserWorker and UserSerializer")).to eq(
           action: :edit,
           entity: "User",
-          topic: :general
+          topic: :general,
+          topics: [:serialization, :job]
         )
       end
     end
@@ -998,6 +1000,95 @@ RSpec.describe RequestAnalyzer do
         entity: "User",
         topic: :general
       )
+    end
+  end
+
+  describe "multi-topic intent extraction (M11.1)" do
+    let(:analyzer) { described_class.new(models: ["User"]) }
+
+    it "extracts distinct topics for validation and serialization" do
+      result = analyzer.analyze("Add validation to User and update its serializer.")
+      expect(result[:action]).to eq(:edit)
+      expect(result[:entity]).to eq("User")
+      expect(result[:topic]).to eq(:general)
+      expect(result[:topics]).to contain_exactly(:validation, :serialization)
+    end
+
+    it "recognizes job and mailer as distinct topics without multi-entity misclassification" do
+      result = analyzer.analyze("Fix UserJob and update UserMailer.")
+      expect(result[:action]).to eq(:edit)
+      expect(result[:entity]).to eq("User")
+      expect(result[:topic]).to eq(:general)
+      expect(result[:topics]).to contain_exactly(:job, :mailer)
+    end
+
+    it "recognizes policy and validation as distinct topics" do
+      result = analyzer.analyze("Update User policy and add validation.")
+      expect(result[:action]).to eq(:edit)
+      expect(result[:entity]).to eq("User")
+      expect(result[:topic]).to eq(:general)
+      expect(result[:topics]).to contain_exactly(:policy, :validation)
+    end
+
+    it "recognizes association and serialization while preserving association metadata" do
+      result = analyzer.analyze("Update User's posts association and serializer.")
+      expect(result[:action]).to eq(:edit)
+      expect(result[:entity]).to eq("User")
+      expect(result[:topic]).to eq(:general)
+      expect(result[:topics]).to contain_exactly(:association, :serialization)
+      expect(result[:association]).to eq("posts")
+    end
+
+    it "preserves exact result contract for single-topic request without topics key" do
+      result = analyzer.analyze("Add validation to User.")
+      expect(result).to eq(
+        action: :edit,
+        entity: "User",
+        topic: :validation
+      )
+      expect(result).not_to have_key(:topics)
+    end
+
+    it "does not duplicate topics or invent a second topic for repeated mentions" do
+      result = analyzer.analyze("Add validation to User and verify its validation rules.")
+      expect(result).to eq(
+        action: :edit,
+        entity: "User",
+        topic: :validation
+      )
+      expect(result).not_to have_key(:topics)
+    end
+
+    describe "incidental words and false-positive protection" do
+      it "does not classify ordinary worker productivity as background-job intent" do
+        result = analyzer.analyze("Improve worker productivity and validate the result.")
+        expect(result[:action]).to eq(:edit)
+        expect(result[:entity]).to be_nil
+        expect(result[:topic]).to eq(:validation)
+        expect(result).not_to have_key(:topics)
+      end
+
+      it "does not classify job title as background-job intent" do
+        result = analyzer.analyze("Update User's job title and serializer.")
+        expect(result[:action]).to eq(:edit)
+        expect(result[:entity]).to eq("User")
+        expect(result[:topic]).to eq(:serialization)
+        expect(result).not_to have_key(:topics)
+      end
+
+      it "does not alter action classification or cause edit-specific behavior on non-edit phrases" do
+        result = analyzer.analyze("Discuss User validation and serialization concepts.")
+        expect(result[:action]).to eq(:edit)
+        expect(result[:entity]).to eq("User")
+        expect(result[:topic]).to eq(:general)
+        expect(result[:topics]).to contain_exactly(:validation, :serialization)
+
+        explain_result = analyzer.analyze("Explain User validation and serialization.")
+        expect(explain_result[:action]).to eq(:explain)
+        expect(explain_result[:entity]).to eq("User")
+        expect(explain_result[:topic]).to eq(:general)
+        expect(explain_result[:topics]).to contain_exactly(:validation, :serialization)
+      end
     end
   end
 end

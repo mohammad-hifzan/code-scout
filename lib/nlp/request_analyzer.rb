@@ -230,7 +230,8 @@ class RequestAnalyzer
 
   def analyze(request, models: nil)
     models_list = models || @models
-    topic = detect_topic(request)
+    detected_topics = detect_topics(request)
+    topic = detected_topics.size == 1 ? detected_topics.first : :general
 
     result = {
       action: detect_action(request),
@@ -238,12 +239,16 @@ class RequestAnalyzer
       topic: topic
     }
 
-    result[:association] = detect_association(request, result[:entity]) if topic == :association
-    if topic == :service
+    result[:topics] = detected_topics if detected_topics.size > 1
+
+    has_topic = ->(t) { topic == t || (result[:topics] && result[:topics].include?(t)) }
+
+    result[:association] = detect_association(request, result[:entity]) if has_topic.call(:association)
+    if has_topic.call(:service)
       service_action = detect_service_action(request, result[:entity])
       result[:service_action] = service_action if service_action
     end
-    if topic == :concern
+    if has_topic.call(:concern)
       concern_name = detect_concern_name(request, result[:entity])
       result[:concern_name] = concern_name if concern_name
     end
@@ -347,6 +352,11 @@ class RequestAnalyzer
   end
 
   def detect_topic(request)
+    topics = detect_topics(request)
+    topics.size == 1 ? topics.first : :general
+  end
+
+  def detect_topics(request)
     text = request.downcase
 
     detected = []
@@ -356,7 +366,7 @@ class RequestAnalyzer
       end
     end
 
-    detected.size == 1 ? detected.first : :general
+    detected.uniq
   end
 
   def detect_association(request, entity)
