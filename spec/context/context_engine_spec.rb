@@ -1128,6 +1128,223 @@ RSpec.describe ContextEngine do
             end
           end
         end
+
+        describe 'under M12 evidence provenance and declared relationship contract' do
+          let(:edit_rule) { ContextRules::EditModelRule.new }
+          let(:model_analyzer_data) do
+            {
+              model: 'User',
+              associations: {
+                belongs_to: [{ name: 'account', class_name: 'Account' }],
+                has_many: [
+                  { name: 'posts', through: 'post_memberships' },
+                  { name: 'comments' }
+                ],
+                has_one: []
+              },
+              validations: ['email'],
+              validators: ['EmailDomainValidator'],
+              callbacks: ['normalize_email'],
+              includes: ['Auditable'],
+              extends: []
+            }
+          end
+          let(:model_context) do
+            super().merge(
+              model: 'app/models/user.rb',
+              primary_controller: 'app/controllers/users_controller.rb',
+              primary_policy: 'app/policies/user_policy.rb',
+              related_models: ['app/models/account.rb', 'app/models/post_membership.rb'],
+              associations: {
+                'account' => 'app/models/account.rb',
+                'posts' => 'app/models/post_membership.rb'
+              },
+              validators: [
+                'app/validators/email_domain_validator.rb'
+              ],
+              serializers: [
+                'app/serializers/user_serializer.rb'
+              ],
+              jobs: [
+                'app/jobs/user_job.rb'
+              ],
+              mailers: [
+                'app/mailers/user_mailer.rb'
+              ],
+              concerns: [
+                'app/models/concerns/auditable.rb'
+              ]
+            )
+          end
+          let(:model_data) do
+            {
+              analyzer: model_analyzer_data,
+              context: model_context
+            }
+          end
+
+          describe 'A. Evidence map and backward compatibility' do
+            it 'returns an evidence map keyed by candidate path mapping to arrays of unique symbols' do
+              result = engine.build(entity, rule: edit_rule, topic: :general)
+              expect(result).to have_key(:evidence)
+              expect(result[:evidence]).to be_a(Hash)
+              result[:evidence].each do |path, tags|
+                expect(path).to be_a(String)
+                expect(tags).to be_an(Array)
+                expect(tags.uniq).to eq(tags)
+                tags.each { |t| expect(t).to be_a(Symbol) }
+              end
+            end
+
+            it 'preserves plain string arrays for primary, required, related, and optional' do
+              result = engine.build(entity, rule: edit_rule, topic: :general)
+              expect(result[:primary]).to all(be_a(String))
+              expect(result[:required]).to all(be_a(String))
+              expect(result[:related]).to all(be_a(String)) if result[:related]
+              expect(result[:optional]).to all(be_a(String)) if result[:optional]
+            end
+
+            it 'preserves ranking output contract' do
+              result = engine.build(entity, rule: edit_rule, topic: :general)
+              expect(result).to have_key(:ranked)
+            end
+          end
+
+          describe 'B. Evidence labels for candidate selection paths' do
+            it 'labels the primary target model as :primary_entity' do
+              result = engine.build(entity, rule: edit_rule, topic: :general)
+              expect(result[:evidence]).to be_a(Hash)
+              expect(result[:evidence]['app/models/user.rb']).to include(:primary_entity)
+            end
+
+            it 'labels validator candidates as :model_validator' do
+              result = engine.build(entity, rule: edit_rule, topic: :validation)
+              expect(result[:required]).to include('app/validators/email_domain_validator.rb')
+              expect(result[:evidence]).to be_a(Hash)
+              expect(result[:evidence]['app/validators/email_domain_validator.rb']).to include(:model_validator)
+            end
+
+            it 'labels declared association candidates as :declared_association' do
+              result = engine.build(entity, rule: edit_rule, topic: :association, association: 'account')
+              expect(result[:required]).to include('app/models/account.rb')
+              expect(result[:evidence]).to be_a(Hash)
+              expect(result[:evidence]['app/models/account.rb']).to include(:declared_association)
+            end
+
+            it 'labels directly detected model concerns as :declared_concern' do
+              result = engine.build(entity, rule: edit_rule, topic: :concern, concern_name: 'Auditable')
+              expect(result[:required]).to include('app/models/concerns/auditable.rb')
+              expect(result[:evidence]).to be_a(Hash)
+              expect(result[:evidence]['app/models/concerns/auditable.rb']).to include(:declared_concern)
+            end
+
+            it 'labels conventional topic artifacts as :topic_match' do
+              result = engine.build(entity, rule: edit_rule, topic: :serialization)
+              expect(result[:required]).to include('app/serializers/user_serializer.rb')
+              expect(result[:evidence]).to be_a(Hash)
+              expect(result[:evidence]['app/serializers/user_serializer.rb']).to include(:topic_match)
+            end
+
+            it 'labels generic fallback candidates under generic rules as :rule_fallback' do
+              result = engine.build(entity, rule: edit_rule, topic: :general)
+              expect(result[:required]).to include('app/controllers/users_controller.rb')
+              expect(result[:evidence]).to be_a(Hash)
+              expect(result[:evidence]['app/controllers/users_controller.rb']).to include(:rule_fallback)
+              expect(result[:required]).to include('app/policies/user_policy.rb')
+              expect(result[:evidence]['app/policies/user_policy.rb']).to include(:rule_fallback)
+            end
+
+            it 'labels generic related-model topic candidates without an association name as :topic_match rather than :declared_association' do
+              result = engine.build(entity, rule: edit_rule, topic: :association)
+              expect(result[:required]).to include('app/models/account.rb')
+              expect(result[:evidence]).to be_a(Hash)
+              expect(result[:evidence]['app/models/account.rb']).to include(:topic_match)
+              expect(result[:evidence]['app/models/account.rb']).not_to include(:declared_association)
+            end
+
+            it 'labels related models selected via rule fallback as :rule_fallback rather than :declared_association' do
+              explain_rule = ContextRules::ExplainRule.new
+              result = engine.build(entity, rule: explain_rule, topic: :general)
+              expect(result[:related]).to include('app/models/account.rb')
+              expect(result[:evidence]).to be_a(Hash)
+              expect(result[:evidence]['app/models/account.rb']).to include(:rule_fallback)
+              expect(result[:evidence]['app/models/account.rb']).not_to include(:declared_association)
+            end
+          end
+
+          describe 'C. Multiple reasons per path and deduplication' do
+            let(:debug_rule) { ContextRules::DebugRule.new }
+
+            it 'accumulates distinct evidence tags when a path is selected through multiple mechanisms' do
+              # Under DebugRule (non-specialized edit rule), rule.include_policy? selects primary_policy (:rule_fallback)
+              # Concurrently, topic: :policy selects primary_policy (:topic_match)
+              result = engine.build(entity, rule: debug_rule, topic: :policy)
+              expect(result[:evidence]).to be_a(Hash)
+              tags = result[:evidence]['app/policies/user_policy.rb']
+              expect(tags).to contain_exactly(:rule_fallback, :topic_match)
+              expect(tags.uniq).to eq(tags)
+            end
+
+            it 'maintains deterministic tag ordering when multiple tags are accumulated' do
+              result = engine.build(entity, rule: debug_rule, topic: :policy)
+              expect(result[:evidence]).to be_a(Hash)
+              expect(result[:evidence]['app/policies/user_policy.rb']).to eq([:rule_fallback, :topic_match])
+            end
+          end
+
+          describe 'D. Association outcomes and fail-closed boundaries' do
+            it 'selects declared association and preserves through_model join model priority' do
+              result = engine.build(entity, rule: edit_rule, topic: :association, association: 'posts')
+              expect(result[:required]).to include('app/models/post_membership.rb')
+              expect(result[:evidence]).to be_a(Hash)
+              expect(result[:evidence]['app/models/post_membership.rb']).to include(:declared_association)
+            end
+
+            it 'fails closed when association is confirmed absent from model analysis' do
+              result = engine.build(entity, rule: edit_rule, topic: :association, association: 'billing_profile')
+              expect(result[:required]).to be_empty
+              expect(result[:evidence]).to be_a(Hash)
+              expect(result[:evidence]).not_to have_key('app/models/billing/profile.rb')
+            end
+
+            it 'fails closed when association is declared but unresolvable or polymorphic' do
+              model_analyzer_data[:associations][:belongs_to] << { name: 'imageable', polymorphic: true }
+              result = engine.build(entity, rule: edit_rule, topic: :association, association: 'imageable')
+              expect(result[:required]).to be_empty
+            end
+
+            it 'preserves fail-closed behavior when model is missing from index' do
+              expect(engine.build('NonExistent', rule: edit_rule, topic: :association, association: 'posts')).to be_nil
+            end
+          end
+
+          describe 'E. Validator isolation' do
+            it 'does not select an unrelated validator not referenced in model validator analysis' do
+              result = engine.build(entity, rule: edit_rule, topic: :validation)
+              expect(result[:required]).not_to include('app/validators/cnpj_validator.rb')
+              expect(result[:evidence]).to be_a(Hash)
+              expect(result[:evidence]).not_to have_key('app/validators/cnpj_validator.rb')
+            end
+          end
+
+          describe 'F. Multi-topic selection with evidence provenance' do
+            it 'records distinct evidence tags for multi-topic union candidates' do
+              result = engine.build(
+                entity,
+                rule: edit_rule,
+                topic: :general,
+                topics: [:validation, :serialization]
+              )
+              expect(result[:required]).to include(
+                'app/validators/email_domain_validator.rb',
+                'app/serializers/user_serializer.rb'
+              )
+              expect(result[:evidence]).to be_a(Hash)
+              expect(result[:evidence]['app/validators/email_domain_validator.rb']).to include(:model_validator)
+              expect(result[:evidence]['app/serializers/user_serializer.rb']).to include(:topic_match)
+            end
+          end
+        end
       end
     end
   end

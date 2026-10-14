@@ -34,6 +34,14 @@ class ContextEngine
                      end
     specialized_edit = rule.is_a?(ContextRules::EditModelRule) && is_specialized
 
+    evidence = {}
+    record_evidence = lambda do |file, tag|
+      next unless file && tag
+
+      evidence[file] ||= []
+      evidence[file] << tag unless evidence[file].include?(tag)
+    end
+
     result = {
       target: entity
     }
@@ -42,38 +50,48 @@ class ContextEngine
       result[:primary] = [
         context[:model]
       ].compact
+      result[:primary].each { |file| record_evidence.call(file, :primary_entity) }
     end
 
     result[:required] ||= [] if specialized_edit || rule.include_controller? || rule.include_policy?
     unless specialized_edit
       if rule.include_controller? && context[:primary_controller]
         result[:required] << context[:primary_controller]
+        record_evidence.call(context[:primary_controller], :rule_fallback)
       end
 
       if rule.include_policy? && context[:primary_policy]
         result[:required] << context[:primary_policy]
+        record_evidence.call(context[:primary_policy], :rule_fallback)
       end
     end
 
     topic_files = if topics && !topics.empty?
                     topics.flat_map do |t|
                       t_sym = t&.to_sym
-                      topic_required_files(
+                      assoc_arg = (t_sym == :association ? association : nil)
+                      files = topic_required_files(
                         context,
                         t_sym,
-                        association: (t_sym == :association ? association : nil),
+                        association: assoc_arg,
                         service_action: (t_sym == :service ? service_action : nil),
                         concern_name: (t_sym == :concern ? concern_name : nil)
                       )
+                      tag = topic_evidence_tag(t_sym, association: assoc_arg)
+                      files.each { |file| record_evidence.call(file, tag) }
+                      files
                     end.uniq
                   else
-                    topic_required_files(
+                    files = topic_required_files(
                       context,
-                      topic,
+                      topic_sym,
                       association: association,
                       service_action: service_action,
                       concern_name: concern_name
                     )
+                    tag = topic_evidence_tag(topic_sym, association: association)
+                    files.each { |file| record_evidence.call(file, tag) }
+                    files
                   end
     if topic_files.any?
       result[:required] ||= []
@@ -88,19 +106,35 @@ class ContextEngine
         elsif !(topic_sym == :association && association)
           Array(context[:related_models]).compact - (result[:required] || [])
         end
+      result[:related]&.each { |file| record_evidence.call(file, :rule_fallback) }
     end
 
     if rule.include_views? && !specialized_edit
       result[:optional] =
         Array(context[:primary_views]).compact
+      result[:optional]&.each { |file| record_evidence.call(file, :rule_fallback) }
     end
 
-    result.merge(
-      ranked: ContextRanker.new.rank(result)
-    )
+    ranked = ContextRanker.new.rank(result)
+    result[:ranked] = ranked
+    result[:evidence] = evidence if rule.is_a?(ContextRules::BaseRule)
+    result
   end
 
   private
+
+  def topic_evidence_tag(topic, association: nil)
+    case topic&.to_sym
+    when :validation
+      :model_validator
+    when :association
+      association && !association.to_s.empty? ? :declared_association : :topic_match
+    when :concern
+      :declared_concern
+    else
+      :topic_match
+    end
+  end
 
   def specialized_topic?(topic)
     topic && topic != :general && TOPIC_REQUIRED_CATEGORIES.key?(topic)

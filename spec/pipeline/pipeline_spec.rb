@@ -1714,6 +1714,26 @@ RSpec.describe Pipeline::Pipeline do
         expect(prompt).to include("app/serializers/user_serializer.rb")
         expect(prompt).not_to include("app/jobs/user_job.rb")
       end
+
+      it "ensures evidence provenance metadata does not leak into rendered prompt markdown" do
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Add validation to User and update its serializer.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/validators/email_validator.rb")
+        expect(prompt).to include("app/serializers/user_serializer.rb")
+
+        # Evidence provenance metadata must remain internal and not pollute the prompt
+        expect(prompt).not_to include("model_validator")
+        expect(prompt).not_to include("primary_entity")
+        expect(prompt).not_to include("declared_association")
+        expect(prompt).not_to include("rule_fallback")
+        expect(prompt).not_to include(":evidence")
+        expect(prompt).not_to include("evidence:")
+      end
     end
   end
 end
