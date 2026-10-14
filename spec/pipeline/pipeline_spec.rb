@@ -1734,6 +1734,130 @@ RSpec.describe Pipeline::Pipeline do
         expect(prompt).not_to include(":evidence")
         expect(prompt).not_to include("evidence:")
       end
+
+      it "resolves 'Why is User creation failing?' to model, controller, and declared validators without unrequested policy" do
+        create_validator_file(
+          "email_validator",
+          <<~RUBY
+            class EmailValidator < ActiveModel::Validator
+              def validate(record); end
+            end
+          RUBY
+        )
+        create_validator_file(
+          "cnpj_validator",
+          <<~RUBY
+            class CnpjValidator < ActiveModel::Validator
+              def validate(record); end
+            end
+          RUBY
+        )
+        create_policy_file(
+          "user_policy",
+          <<~RUBY
+            class UserPolicy < ApplicationPolicy
+            end
+          RUBY
+        )
+        create_model_file(
+          "user",
+          <<~RUBY
+            class User < ApplicationRecord
+              validates_with EmailValidator
+            end
+          RUBY
+        )
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Why is User creation failing?")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/controllers/users_controller.rb")
+        expect(prompt).to include("app/validators/email_validator.rb")
+        expect(prompt).not_to include("app/policies/user_policy.rb")
+        expect(prompt).not_to include("app/validators/cnpj_validator.rb")
+
+        # Invariance check: evidence metadata must not leak into prompt
+        expect(prompt).not_to include(":evidence")
+        expect(prompt).not_to include("model_validator")
+      end
+
+      it "resolves 'Why is User validation failing?' without unrequested controller or policy fallbacks" do
+        create_validator_file(
+          "email_validator",
+          <<~RUBY
+            class EmailValidator < ActiveModel::Validator
+              def validate(record); end
+            end
+          RUBY
+        )
+        create_policy_file(
+          "user_policy",
+          <<~RUBY
+            class UserPolicy < ApplicationPolicy
+            end
+          RUBY
+        )
+        create_model_file(
+          "user",
+          <<~RUBY
+            class User < ApplicationRecord
+              validates_with EmailValidator
+            end
+          RUBY
+        )
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Why is User validation failing?")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/validators/email_validator.rb")
+        expect(prompt).not_to include("app/controllers/users_controller.rb")
+        expect(prompt).not_to include("app/policies/user_policy.rb")
+      end
+
+      it "preserves generic debugging baseline for 'Why is User failing?' by retaining fallbacks without promoting validators" do
+        create_validator_file(
+          "email_validator",
+          <<~RUBY
+            class EmailValidator < ActiveModel::Validator
+              def validate(record); end
+            end
+          RUBY
+        )
+        create_policy_file(
+          "user_policy",
+          <<~RUBY
+            class UserPolicy < ApplicationPolicy
+            end
+          RUBY
+        )
+        create_model_file(
+          "user",
+          <<~RUBY
+            class User < ApplicationRecord
+              validates_with EmailValidator
+            end
+          RUBY
+        )
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Why is User failing?")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/controllers/users_controller.rb")
+        expect(prompt).to include("app/policies/user_policy.rb")
+        expect(prompt).not_to include("app/validators/email_validator.rb")
+      end
     end
   end
 end

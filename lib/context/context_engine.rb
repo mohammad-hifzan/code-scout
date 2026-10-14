@@ -13,6 +13,8 @@ class ContextEngine
     mailer: %i[mailers mailer_views],
     concern: %i[concerns],
     validation: %i[validators],
+    creation: %i[validators],
+    persistence: %i[validators],
     association: %i[related_models],
     service: %i[services]
   }.freeze
@@ -33,6 +35,12 @@ class ContextEngine
                        specialized_topic?(topic_sym)
                      end
     specialized_edit = rule.is_a?(ContextRules::EditModelRule) && is_specialized
+    specialized_debug = rule.is_a?(ContextRules::DebugRule) && is_specialized
+    active_topics = if topics && !topics.empty?
+                      topics.map { |t| t&.to_sym }.compact
+                    else
+                      [topic_sym].compact
+                    end
 
     evidence = {}
     record_evidence = lambda do |file, tag|
@@ -53,17 +61,32 @@ class ContextEngine
       result[:primary].each { |file| record_evidence.call(file, :primary_entity) }
     end
 
-    result[:required] ||= [] if specialized_edit || rule.include_controller? || rule.include_policy?
-    unless specialized_edit
-      if rule.include_controller? && context[:primary_controller]
-        result[:required] << context[:primary_controller]
-        record_evidence.call(context[:primary_controller], :rule_fallback)
-      end
+    result[:required] ||= [] if specialized_edit || specialized_debug || rule.include_controller? || rule.include_policy?
 
-      if rule.include_policy? && context[:primary_policy]
-        result[:required] << context[:primary_policy]
-        record_evidence.call(context[:primary_policy], :rule_fallback)
-      end
+    include_controller_fallback = if specialized_edit
+                                    false
+                                  elsif specialized_debug
+                                    !active_topics.any? { |t| %i[validation serialization policy].include?(t) }
+                                  else
+                                    rule.include_controller?
+                                  end
+
+    include_policy_fallback = if specialized_edit
+                                false
+                              elsif specialized_debug
+                                active_topics.include?(:policy)
+                              else
+                                rule.include_policy?
+                              end
+
+    if include_controller_fallback && context[:primary_controller]
+      result[:required] << context[:primary_controller]
+      record_evidence.call(context[:primary_controller], :rule_fallback)
+    end
+
+    if include_policy_fallback && context[:primary_policy]
+      result[:required] << context[:primary_policy]
+      record_evidence.call(context[:primary_policy], :rule_fallback)
     end
 
     topic_files = if topics && !topics.empty?
@@ -125,7 +148,7 @@ class ContextEngine
 
   def topic_evidence_tag(topic, association: nil)
     case topic&.to_sym
-    when :validation
+    when :validation, :creation, :persistence
       :model_validator
     when :association
       association && !association.to_s.empty? ? :declared_association : :topic_match

@@ -35,10 +35,22 @@ class RequestAnalyzer
 
   DEBUG_PATTERNS = [
     /\bfails?\b/i,
-    /\bisn't\b/i
+    /\bisn't\b/i,
+    /\bcan'?t\b/i,
+    /\bcannot\b/i
   ].freeze
 
   TOPIC_PATTERNS = {
+    creation: [
+      /\b(?:creation|persistence)\s+(?:is\s+)?(?:failing|failed|fails|failure|error|broken|bug|issue)\b/i,
+      /\b(?:saving|persisting)\s+(?:is\s+)?(?:failing|failed|fails|failure|error|broken|bug|issue)\b/i,
+      /\b(?:save|create|persist)\s+(?:is\s+)?(?:failing|failed|fails|failure|error|broken|bug|issue)\b/i,
+      /\b(?:can'?t|cannot)\s+(?:\w+\s+)?(?:be\s+)?(?:saved|created|persisted)\b/i,
+      /\b(?:can'?t|cannot)\s+(?:\w+\s+)?(?:save|create|persist)\b/i,
+      /\b(?:fails?|failing|failed|broken|error)\s+(?:when|while|\w+\s+)?(?:saving|creating|persisting|to\s+save|to\s+create|to\s+persist)\b/i,
+      /\b(?:saving|creating|persisting)\s+\w+\s+(?:is\s+)?(?:fails?|failing|failed|broken|error)\b/i,
+      /\b\w+\s+(?:fails?|failing|failed|broken|error)\s+to\s+(?:save|create|persist)\b/i
+    ],
     validation: [
       /\bvalidat(ion|e|es|or|ions|ors)\b/i,
       /\b\w*validator(s)?\b/i

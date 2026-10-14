@@ -926,10 +926,12 @@ RSpec.describe ContextEngine do
           end
 
           context 'DebugRule regression' do
-            it 'preserves existing controller and policy inclusion for debug rule with validation topic' do
+            it 'retains validator candidate without unrequested controller and policy fallbacks in required for debug rule with validation topic' do
               result = engine.build(entity, rule: debug_rule, topic: :validation)
 
-              expect(result[:required]).to include('users_controller.rb', 'user_policy.rb', 'email_domain_validator.rb')
+              expect(result[:required]).to include('email_domain_validator.rb')
+              expect(result[:required]).not_to include('users_controller.rb')
+              expect(result[:required]).not_to include('user_policy.rb')
               expect(result[:related]).to include('post.rb', 'account.rb')
             end
           end
@@ -1342,6 +1344,107 @@ RSpec.describe ContextEngine do
               expect(result[:evidence]).to be_a(Hash)
               expect(result[:evidence]['app/validators/email_domain_validator.rb']).to include(:model_validator)
               expect(result[:evidence]['app/serializers/user_serializer.rb']).to include(:topic_match)
+            end
+          end
+        end
+
+        describe 'under M13 debugging context completeness contract' do
+          let(:debug_rule) { ContextRules::DebugRule.new }
+          let(:model_analyzer_data) do
+            {
+              model: 'User',
+              associations: {
+                belongs_to: [{ name: 'account', class_name: 'Account' }],
+                has_many: [{ name: 'posts', through: 'post_memberships' }],
+                has_one: []
+              },
+              validations: ['email'],
+              validators: ['EmailDomainValidator'],
+              callbacks: ['normalize_email'],
+              includes: [],
+              extends: []
+            }
+          end
+          let(:model_context) do
+            super().merge(
+              model: 'app/models/user.rb',
+              primary_controller: 'app/controllers/users_controller.rb',
+              primary_policy: 'app/policies/user_policy.rb',
+              related_models: ['app/models/account.rb', 'app/models/post_membership.rb'],
+              associations: {
+                'account' => 'app/models/account.rb',
+                'posts' => 'app/models/post_membership.rb'
+              },
+              validators: [
+                'app/validators/email_domain_validator.rb'
+              ],
+              serializers: [
+                'app/serializers/user_serializer.rb'
+              ]
+            )
+          end
+          let(:model_data) do
+            {
+              analyzer: model_analyzer_data,
+              context: model_context
+            }
+          end
+
+          describe 'A. Creation and persistence debugging' do
+            it 'promotes declared custom validators to required context alongside the creation controller' do
+              result = engine.build(entity, rule: debug_rule, topic: :creation)
+              expect(result[:primary]).to include('app/models/user.rb')
+              expect(result[:required]).to include('app/validators/email_domain_validator.rb')
+              expect(result[:required]).to include('app/controllers/users_controller.rb')
+              expect(result[:evidence]['app/validators/email_domain_validator.rb']).to include(:model_validator)
+              expect(result[:evidence]['app/controllers/users_controller.rb']).to include(:rule_fallback)
+            end
+
+            it 'excludes unrequested policy and unrelated validators from required context during creation debugging' do
+              result = engine.build(entity, rule: debug_rule, topic: :creation)
+              expect(result[:required]).not_to include('app/policies/user_policy.rb')
+              expect(result[:required]).not_to include('app/validators/cnpj_validator.rb')
+              expect(result[:evidence]).not_to have_key('app/validators/cnpj_validator.rb')
+            end
+
+            it 'produces no phantom validator paths when model has only built-in validations' do
+              model_context[:validators] = []
+              result = engine.build(entity, rule: debug_rule, topic: :creation)
+              expect(result[:required]).to include('app/controllers/users_controller.rb')
+              expect(result[:required].grep(/validator/)).to be_empty
+            end
+          end
+
+          describe 'B. Specialized debug topic isolation' do
+            it 'selects validators without requiring unrequested controller or policy fallbacks for validation debugging' do
+              result = engine.build(entity, rule: debug_rule, topic: :validation)
+              expect(result[:required]).to include('app/validators/email_domain_validator.rb')
+              expect(result[:required]).not_to include('app/controllers/users_controller.rb')
+              expect(result[:required]).not_to include('app/policies/user_policy.rb')
+            end
+
+            it 'does not promote validators or unrequested controller/policy fallbacks to required for serialization debugging' do
+              result = engine.build(entity, rule: debug_rule, topic: :serialization)
+              expect(result[:required]).to include('app/serializers/user_serializer.rb')
+              expect(result[:required]).not_to include('app/validators/email_domain_validator.rb')
+              expect(result[:required]).not_to include('app/controllers/users_controller.rb')
+              expect(result[:required]).not_to include('app/policies/user_policy.rb')
+            end
+
+            it 'selects the policy without promoting validators or unrequested controller fallbacks to required for authorization debugging' do
+              result = engine.build(entity, rule: debug_rule, topic: :policy)
+              expect(result[:required]).to include('app/policies/user_policy.rb')
+              expect(result[:required]).not_to include('app/validators/email_domain_validator.rb')
+              expect(result[:required]).not_to include('app/controllers/users_controller.rb')
+            end
+          end
+
+          describe 'C. Generic debugging baseline preservation' do
+            it 'preserves fallback controller and policy and does not automatically promote validators for generic debugging' do
+              result = engine.build(entity, rule: debug_rule, topic: :general)
+              expect(result[:required]).to include('app/controllers/users_controller.rb')
+              expect(result[:required]).to include('app/policies/user_policy.rb')
+              expect(result[:required]).not_to include('app/validators/email_domain_validator.rb')
             end
           end
         end
