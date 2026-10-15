@@ -1090,5 +1090,97 @@ RSpec.describe RequestAnalyzer do
         expect(explain_result[:topics]).to contain_exactly(:validation, :serialization)
       end
     end
+
+    describe "under M14 namespaced entity resolution contract" do
+      let(:discovery_orders) do
+        [
+          ["Admin::User", "User"],
+          ["User", "Admin::User"]
+        ]
+      end
+
+      describe "when root and namespaced models coexist" do
+        it "resolves unqualified entity to root model regardless of discovery order" do
+          discovery_orders.each do |models|
+            analyzer = described_class.new(models: models)
+
+            expect(analyzer.analyze("Why is User creation failing?")[:entity]).to eq("User")
+            expect(analyzer.analyze("Add a validation to User.")[:entity]).to eq("User")
+            expect(analyzer.analyze("Why is User failing?")[:entity]).to eq("User")
+          end
+        end
+
+        it "resolves explicitly qualified entity to namespaced model regardless of discovery order" do
+          discovery_orders.each do |models|
+            analyzer = described_class.new(models: models)
+
+            expect(analyzer.analyze("Change Admin::User.")[:entity]).to eq("Admin::User")
+            expect(analyzer.analyze("Why is Admin::User failing?")[:entity]).to eq("Admin::User")
+          end
+        end
+
+        it "resolves compound artifacts to root model when unqualified and to namespaced model when qualified" do
+          discovery_orders.each do |models|
+            analyzer = described_class.new(models: models)
+
+            expect(analyzer.analyze("Update UserSerializer")[:entity]).to eq("User")
+            expect(analyzer.analyze("Update Admin::UserSerializer")[:entity]).to eq("Admin::User")
+          end
+        end
+      end
+
+      describe "unique namespaced candidate without root model" do
+        let(:analyzer) { described_class.new(models: ["Billing::Invoice"]) }
+
+        it "resolves unqualified name to the unique namespaced model" do
+          expect(analyzer.analyze("Update Invoice tax rates")[:entity]).to eq("Billing::Invoice")
+          expect(analyzer.analyze("Change InvoiceSerializer")[:entity]).to eq("Billing::Invoice")
+        end
+
+        it "resolves explicitly qualified name to the unique namespaced model" do
+          expect(analyzer.analyze("Update Billing::Invoice")[:entity]).to eq("Billing::Invoice")
+          expect(analyzer.analyze("Change Billing::InvoiceSerializer")[:entity]).to eq("Billing::Invoice")
+        end
+      end
+
+      describe "ambiguous namespaced candidates without root model" do
+        let(:ambiguous_orders) do
+          [
+            ["Admin::User", "Customer::User"],
+            ["Customer::User", "Admin::User"]
+          ]
+        end
+
+        it "fails closed (entity: nil) for ambiguous unqualified names regardless of discovery order" do
+          ambiguous_orders.each do |models|
+            analyzer = described_class.new(models: models)
+
+            expect(analyzer.analyze("Why is User creation failing?")[:entity]).to be_nil
+            expect(analyzer.analyze("Add a validation to User.")[:entity]).to be_nil
+            expect(analyzer.analyze("Update UserSerializer")[:entity]).to be_nil
+          end
+        end
+
+        it "resolves explicitly qualified names even when ambiguous unqualified siblings exist" do
+          ambiguous_orders.each do |models|
+            analyzer = described_class.new(models: models)
+
+            expect(analyzer.analyze("Change Admin::User.")[:entity]).to eq("Admin::User")
+            expect(analyzer.analyze("Change Customer::User.")[:entity]).to eq("Customer::User")
+            expect(analyzer.analyze("Update Admin::UserSerializer")[:entity]).to eq("Admin::User")
+            expect(analyzer.analyze("Update Customer::UserSerializer")[:entity]).to eq("Customer::User")
+          end
+        end
+      end
+
+      describe "unknown entities" do
+        let(:analyzer) { described_class.new(models: ["Admin::User", "User"]) }
+
+        it "fails closed and returns nil for unknown model names" do
+          expect(analyzer.analyze("Change Account")[:entity]).to be_nil
+          expect(analyzer.analyze("Update AccountSerializer")[:entity]).to be_nil
+        end
+      end
+    end
   end
 end

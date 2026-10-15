@@ -1858,6 +1858,19 @@ RSpec.describe Pipeline::Pipeline do
         expect(prompt).to include("app/policies/user_policy.rb")
         expect(prompt).not_to include("app/validators/email_validator.rb")
       end
+
+      it "resolves unqualified User to root User when both root and namespaced models exist" do
+        create_model_file("admin/user", "module Admin\n  class User < ApplicationRecord\n  end\nend\n")
+        create_model_file("user", "class User < ApplicationRecord\nend\n")
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Add a validation to User.")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).not_to include("app/models/admin/user.rb")
+      end
     end
   end
 end

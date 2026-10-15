@@ -445,22 +445,32 @@ class RequestAnalyzer
 
   def build_model_lookup(models)
     lookup = {}
+    unique_models = Array(models).compact.uniq
 
-    models.each do |model_name|
-      # 1. Exact downcase e.g. "user" => "User", "billing::invoice" => "Billing::Invoice"
-      lookup[model_name.downcase] ||= model_name
-
-      # 2. Plural variations e.g. "users" => "User"
-      plural_variants(model_name.downcase).each do |plural|
-        lookup[plural] ||= model_name
+    # 1. Exact model names and their plural variations take absolute precedence
+    # e.g. "user" => "User", "admin::user" => "Admin::User"
+    unique_models.each do |model_name|
+      downcased = model_name.downcase
+      plural_variants(downcased).each do |variant|
+        lookup[variant] = model_name
       end
+    end
 
-      # 3. For namespaced models like "Billing::Invoice", also map demodulized "invoice" and "invoices"
-      if model_name.include?("::")
-        demodulized = model_name.split("::").last.downcase
-        lookup[demodulized] ||= model_name
-        plural_variants(demodulized).each do |plural|
-          lookup[plural] ||= model_name
+    # 2. For namespaced models like "Billing::Invoice", map demodulized aliases
+    # only when:
+    #   a) No root model already claimed the downcased or plural variant (root precedence).
+    #   b) Exactly one namespaced model matches the demodulized name (unambiguous fallback).
+    # Ambiguous namespaced models without a root model are left unmapped to fail closed.
+    namespaced_models = unique_models.select { |m| m.include?("::") }
+    demodulized_groups = namespaced_models.group_by { |m| m.split("::").last.downcase }
+
+    demodulized_groups.each do |demod, candidates|
+      next if lookup.key?(demod) || plural_variants(demod).any? { |v| lookup.key?(v) }
+
+      if candidates.size == 1
+        model_name = candidates.first
+        plural_variants(demod).each do |variant|
+          lookup[variant] ||= model_name
         end
       end
     end
