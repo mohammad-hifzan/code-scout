@@ -218,5 +218,178 @@ RSpec.describe ContextRanker do
         ])
       end
     end
+
+    context 'with evidence-aware candidate prioritization across three tiers' do
+      it 'ranks an evidence-backed candidate (tier 1: :model_validator) ahead of a fallback-only candidate (tier 3)' do
+        context = {
+          required: ['/path/to/controller.rb', '/path/to/validator.rb'],
+          evidence: {
+            '/path/to/controller.rb' => [:rule_fallback],
+            '/path/to/validator.rb' => [:model_validator]
+          }
+        }
+
+        result = ranker.rank(context)
+        expect(result.map { |r| r[:path] }).to eq(['/path/to/validator.rb', '/path/to/controller.rb'])
+      end
+
+      it 'ranks an evidence-backed candidate (tier 1: :topic_match) ahead of a fallback-only candidate (tier 3)' do
+        context = {
+          required: ['/path/to/controller.rb', '/path/to/serializer.rb'],
+          evidence: {
+            '/path/to/controller.rb' => [:rule_fallback],
+            '/path/to/serializer.rb' => [:topic_match]
+          }
+        }
+
+        result = ranker.rank(context)
+        expect(result.map { |r| r[:path] }).to eq(['/path/to/serializer.rb', '/path/to/controller.rb'])
+      end
+
+      it 'ranks an evidence-backed candidate (tier 1: :declared_association) ahead of a fallback-only candidate (tier 3)' do
+        context = {
+          required: ['/path/to/controller.rb', '/path/to/account.rb'],
+          evidence: {
+            '/path/to/controller.rb' => [:rule_fallback],
+            '/path/to/account.rb' => [:declared_association]
+          }
+        }
+
+        result = ranker.rank(context)
+        expect(result.map { |r| r[:path] }).to eq(['/path/to/account.rb', '/path/to/controller.rb'])
+      end
+
+      it 'prioritizes a candidate with both declared and fallback tags as evidence-backed tier 1 over a fallback-only candidate' do
+        context = {
+          required: ['/path/to/controller.rb', '/path/to/policy.rb'],
+          evidence: {
+            '/path/to/controller.rb' => [:rule_fallback],
+            '/path/to/policy.rb' => [:rule_fallback, :topic_match]
+          }
+        }
+
+        result = ranker.rank(context)
+        expect(result.map { |r| r[:path] }).to eq(['/path/to/policy.rb', '/path/to/controller.rb'])
+      end
+
+      it 'ranks an evidence-backed candidate (tier 1) ahead of a neutral untagged candidate (tier 2)' do
+        context = {
+          required: ['/path/to/untracked.rb', '/path/to/validator.rb'],
+          evidence: {
+            '/path/to/validator.rb' => [:model_validator]
+          }
+        }
+
+        result = ranker.rank(context)
+        expect(result.map { |r| r[:path] }).to eq(['/path/to/validator.rb', '/path/to/untracked.rb'])
+      end
+
+      it 'ranks a neutral candidate (tier 2) ahead of a fallback-only candidate (tier 3)' do
+        context = {
+          required: ['/path/to/controller.rb', '/path/to/neutral.rb'],
+          evidence: {
+            '/path/to/controller.rb' => [:rule_fallback]
+          }
+        }
+
+        result = ranker.rank(context)
+        expect(result.map { |r| r[:path] }).to eq(['/path/to/neutral.rb', '/path/to/controller.rb'])
+      end
+
+      it 'ranks a candidate with an empty evidence array as neutral (tier 2) ahead of a fallback-only candidate (tier 3)' do
+        context = {
+          required: ['/path/to/controller.rb', '/path/to/empty_evidence.rb'],
+          evidence: {
+            '/path/to/controller.rb' => [:rule_fallback],
+            '/path/to/empty_evidence.rb' => []
+          }
+        }
+
+        result = ranker.rank(context)
+        expect(result.map { |r| r[:path] }).to eq(['/path/to/empty_evidence.rb', '/path/to/controller.rb'])
+      end
+
+      it 'preserves relative insertion order among candidates sharing the evidence-backed tier (e.g. :model_validator and :topic_match)' do
+        context = {
+          required: ['/path/to/validator_a.rb', '/path/to/validator_b.rb'],
+          evidence: {
+            '/path/to/validator_a.rb' => [:model_validator],
+            '/path/to/validator_b.rb' => [:topic_match]
+          }
+        }
+
+        result = ranker.rank(context)
+        expect(result.map { |r| r[:path] }).to eq(['/path/to/validator_a.rb', '/path/to/validator_b.rb'])
+      end
+
+      it 'preserves relative insertion order among candidates sharing the neutral tier' do
+        context = {
+          required: ['/path/to/neutral_first.rb', '/path/to/neutral_second.rb'],
+          evidence: {
+            '/path/to/neutral_second.rb' => []
+          }
+        }
+
+        result = ranker.rank(context)
+        expect(result.map { |r| r[:path] }).to eq(['/path/to/neutral_first.rb', '/path/to/neutral_second.rb'])
+      end
+
+      it 'preserves relative insertion order among candidates sharing the fallback-only tier' do
+        context = {
+          required: ['/path/to/controller.rb', '/path/to/policy.rb'],
+          evidence: {
+            '/path/to/controller.rb' => [:rule_fallback],
+            '/path/to/policy.rb' => [:rule_fallback]
+          }
+        }
+
+        result = ranker.rank(context)
+        expect(result.map { |r| r[:path] }).to eq(['/path/to/controller.rb', '/path/to/policy.rb'])
+      end
+
+      it 'preserves existing category scores and category precedence regardless of evidence tags' do
+        context = {
+          primary: ['/path/to/primary.rb'],
+          required: ['/path/to/required.rb'],
+          related: ['/path/to/related.rb'],
+          optional: ['/path/to/optional.rb'],
+          evidence: {
+            '/path/to/primary.rb' => [:rule_fallback],
+            '/path/to/required.rb' => [:model_validator],
+            '/path/to/related.rb' => [:declared_association],
+            '/path/to/optional.rb' => [:topic_match]
+          }
+        }
+
+        result = ranker.rank(context)
+        expect(result.map { |r| [r[:category], r[:score]] }).to eq([
+          [:primary, 100],
+          [:required, 80],
+          [:related, 60],
+          [:optional, 30]
+        ])
+      end
+
+      it 'preserves insertion order and defined behavior when evidence is absent' do
+        context = {
+          required: ['/path/to/first.rb', '/path/to/second.rb']
+        }
+
+        result = ranker.rank(context)
+        expect(result.map { |r| r[:path] }).to eq(['/path/to/first.rb', '/path/to/second.rb'])
+      end
+
+      it 'preserves defined behavior when a candidate has no evidence entry' do
+        context = {
+          required: ['/path/to/untracked_first.rb', '/path/to/untracked_second.rb'],
+          evidence: {
+            '/path/to/other.rb' => [:model_validator]
+          }
+        }
+
+        result = ranker.rank(context)
+        expect(result.map { |r| r[:path] }).to eq(['/path/to/untracked_first.rb', '/path/to/untracked_second.rb'])
+      end
+    end
   end
 end

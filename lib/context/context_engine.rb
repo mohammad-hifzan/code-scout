@@ -138,9 +138,9 @@ class ContextEngine
       result[:optional]&.each { |file| record_evidence.call(file, :rule_fallback) }
     end
 
+    result[:evidence] = evidence if rule.is_a?(ContextRules::BaseRule)
     ranked = ContextRanker.new.rank(result)
     result[:ranked] = ranked
-    result[:evidence] = evidence if rule.is_a?(ContextRules::BaseRule)
     result
   end
 

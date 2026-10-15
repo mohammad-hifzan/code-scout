@@ -1872,5 +1872,91 @@ RSpec.describe Pipeline::Pipeline do
         expect(prompt).not_to include("app/models/admin/user.rb")
       end
     end
+
+    describe "under M15 evidence-aware context selection contract" do
+      it "ranks declared validator ahead of fallback controller in 'Why is User creation failing?'" do
+        create_model_file(
+          "user",
+          <<~RUBY
+            class User < ApplicationRecord
+              validates :email, email_domain: true
+            end
+          RUBY
+        )
+        create_controller_file(
+          "users_controller",
+          <<~RUBY
+            class UsersController < ApplicationController
+            end
+          RUBY
+        )
+        create_validator_file(
+          "email_domain_validator",
+          <<~RUBY
+            class EmailDomainValidator < ActiveModel::EachValidator
+              def validate_each(record, attribute, value); end
+            end
+          RUBY
+        )
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Why is User creation failing?")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/validators/email_domain_validator.rb")
+        expect(prompt).to include("app/controllers/users_controller.rb")
+
+        validator_pos = prompt.index("app/validators/email_domain_validator.rb")
+        controller_pos = prompt.index("app/controllers/users_controller.rb")
+        expect(validator_pos).to be < controller_pos
+      end
+
+      it "preserves declared validator and prunes fallback controller under constrained token budget" do
+        create_model_file(
+          "user",
+          <<~RUBY
+            class User < ApplicationRecord
+              validates :email, email_domain: true
+            end
+          RUBY
+        )
+        # Total budget: 3000 tokens. CHARS_PER_TOKEN = 4.0.
+        # User is small (~25 tokens).
+        # Validator is ~1600 tokens (6400+ chars).
+        # Fallback controller is ~1600 tokens (6400+ chars).
+        # 25 + 1600 + 1600 = 3225 > 3000 tokens.
+        # Under M15, validator ranks ahead of fallback controller, so validator fits and controller is pruned.
+        create_validator_file(
+          "email_domain_validator",
+          <<~RUBY
+            class EmailDomainValidator < ActiveModel::EachValidator
+              def validate_each(record, attribute, value); end
+              #{'# ' + ('V' * 80) + "\n"}#{("# " + ("v" * 80) + "\n") * 77}
+            end
+          RUBY
+        )
+        create_controller_file(
+          "users_controller",
+          <<~RUBY
+            class UsersController < ApplicationController
+              #{'# ' + ('C' * 80) + "\n"}#{("# " + ("c" * 80) + "\n") * 77}
+            end
+          RUBY
+        )
+
+        pipeline = described_class.new(tmp_project_path)
+        prompt = pipeline.run("Why is User creation failing?")
+
+        expect(prompt).to be_a(String)
+        expect(prompt).to include("## PRIMARY")
+        expect(prompt).to include("app/models/user.rb")
+        expect(prompt).to include("## REQUIRED")
+        expect(prompt).to include("app/validators/email_domain_validator.rb")
+        expect(prompt).not_to include("app/controllers/users_controller.rb")
+      end
+    end
   end
 end
